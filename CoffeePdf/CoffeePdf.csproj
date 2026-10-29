@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Avalonia app (spec §4.3): document windows hosting the PdfViewer. Everything testable is in CoffeePdf.Core. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>CoffeePdf</RootNamespace>
+    <!-- The binary the bundle starts (packaging/mac/Info.plist.in's CFBundleExecutable). -->
+    <AssemblyName>CoffeePDF</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+  </PropertyGroup>
+  <Import Project="../AvaloniaLicense.props" />
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Controls.PdfViewer" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CoffeePdf.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CoffeePdf.Core/CoffeePdf.Core.csproj" />
+  </ItemGroup>
+</Project>

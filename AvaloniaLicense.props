@@ -1,0 +1,24 @@
+<Project>
+  <!--
+    The Avalonia Pro licence key the PdfViewer checks (spec §10), from the AVALONIA_LICENSE_KEY environment variable;
+    never committed. Imported by the projects that run the PdfViewer: the app and its tests. With the key, the build
+    also defines AVALONIA_LICENSED, which PdfViewerFact reads.
+  -->
+  <ItemGroup Condition="'$(AVALONIA_LICENSE_KEY)' != ''">
+    <AvaloniaUILicenseKey Include="$(AVALONIA_LICENSE_KEY)" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(AVALONIA_LICENSE_KEY)' != ''">
+    <DefineConstants>$(DefineConstants);AVALONIA_LICENSED</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(AVALONIA_LICENSE_KEY)' == ''">
+    <!--
+      A build without the key (a contributor without a licence, CI without the secret) still builds and tests.
+      AvaloniaUI.Licensing fails such a build with error AVLIC0001, which no warning setting softens; this switch,
+      from its own targets, stops its build task, and the PdfViewer's tests skip (PdfViewerFact).
+    -->
+    <AvaloniaUILicenseDisableTask>true</AvaloniaUILicenseDisableTask>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AvaloniaUI.Licensing" />
+  </ItemGroup>
+</Project>

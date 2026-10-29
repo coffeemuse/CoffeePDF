@@ -1,0 +1,11 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CoffeePdf.App"
+             Name="CoffeePDF"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <FluentTheme />
+    <!-- Without its theme the PdfViewer draws nothing. -->
+    <StyleInclude Source="avares://Avalonia.Controls.PdfViewer/Themes/Default.axaml" />
+  </Application.Styles>
+</Application>
