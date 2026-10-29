@@ -45,6 +45,7 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
         Assert.NotEmpty(authors);
         output.WriteLine($"A new note's author: {(authors.Count == 0 ? "(note not found)" : authors[0] ?? "(none)")}");
         output.WriteLine($"For comparison, this account's user name is {Environment.UserName}");
+        output.WriteLine($"and its macOS full name, the Markup author's default in spec §5, is {FullName()}");
     }
 
     [PdfViewerFact]
@@ -119,6 +120,19 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
         });
 
         output.WriteLine($"Without a licence key: {observed}");
+    }
+
+    /// <summary>The macOS full name, from <c>id -F</c>; Linux has no such option.</summary>
+    private static string FullName()
+    {
+        if (!OperatingSystem.IsMacOS())
+            return "(not macOS)";
+        var start = new ProcessStartInfo("id") { RedirectStandardOutput = true };
+        start.ArgumentList.Add("-F");
+        using var id = Process.Start(start)!;
+        var name = id.StandardOutput.ReadToEnd().Trim();
+        id.WaitForExit();
+        return name;
     }
 
     private static string Inode(string path)

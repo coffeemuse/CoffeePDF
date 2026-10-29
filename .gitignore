@@ -429,3 +429,6 @@ FodyWeavers.xsd
 
 # macOS
 .DS_Store
+
+# Files the probes write when COFFEEPDF_PROBE_OUT points here (CoffeePdf.Tests/Probe.cs)
+probe-out/
