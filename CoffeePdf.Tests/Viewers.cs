@@ -24,7 +24,8 @@ internal static class Viewers
     /// </summary>
     public static async Task ShowAndLoadAsync(PdfViewer viewer, Action load)
     {
-        var loaded = new TaskCompletionSource();
+        // Asynchronous continuations, so the test never carries on inside the PdfViewer's own DocumentLoaded handler.
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         viewer.DocumentLoaded += (_, _) => loaded.TrySetResult();
         viewer.LoadError += (_, e) => loaded.TrySetException(new IOException(e.Message, e.Exception));
         if (TopLevel.GetTopLevel(viewer) is null)

@@ -24,13 +24,15 @@ public sealed class ViewerSaveTests : IDisposable
         var path = Write("signed.pdf", original);
         Probe.Keep(path, "signed-before.pdf");
 
-        await Headless.RunAsync(async () =>
+        var annotations = await Headless.RunAsync(async () =>
         {
             var viewer = await Viewers.OpenAsync(path);
             var added = await viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
             Assert.True(added >= 0, "AddStickyNoteAsync failed (returned -1): the note couldn't be added headless");
             await viewer.SaveAsync();
-            return true;
+            viewer.CloseDocument();
+            var reopened = await Viewers.OpenAsync(path);
+            return await reopened.GetAnnotationsAsync(0, CancellationToken.None);
         });
 
         var saved = File.ReadAllBytes(path);
@@ -38,6 +40,7 @@ public sealed class ViewerSaveTests : IDisposable
         Assert.True(saved.Length > original.Length, "The save added nothing to the file");
         Assert.Equal(original, saved[..original.Length]);
         SignedPdf.VerifyFirstSignature(saved);
+        Assert.Contains(annotations, a => a.Contents == "Reviewed");
     }
 
     [PdfViewerFact]
