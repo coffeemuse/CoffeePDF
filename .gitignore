@@ -426,3 +426,9 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+# macOS
+.DS_Store
+
+# Files the probes write when COFFEEPDF_PROBE_OUT points here (CoffeePdf.Tests/Probe.cs)
+probe-out/

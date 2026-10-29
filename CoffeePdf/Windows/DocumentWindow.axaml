@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:pdf="using:Avalonia.Controls"
+        x:Class="CoffeePdf.Windows.DocumentWindow"
+        Title="CoffeePDF"
+        Width="1000" Height="760">
+  <NativeMenu.Menu>
+    <NativeMenu>
+      <NativeMenuItem Header="File">
+        <NativeMenu>
+          <NativeMenuItem Header="Open…" Gesture="Meta+O" Click="OnOpen" />
+          <NativeMenuItem Header="Save" Gesture="Meta+S" Click="OnSave" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Close" Gesture="Meta+W" Click="OnClose" />
+        </NativeMenu>
+      </NativeMenuItem>
+    </NativeMenu>
+  </NativeMenu.Menu>
+  <!-- AutoSave stays off (spec §6.4): each edit would otherwise become a save. -->
+  <pdf:PdfViewer x:Name="Viewer"
+                 ViewMode="Continuous"
+                 SidebarMode="Thumbnails"
+                 AllowDocumentSaving="True"
+                 AutoSave="False" />
+</Window>
