@@ -1,0 +1,250 @@
+name: CI
+
+# Tests CoffeePDF on every push and pull request, on macOS and Ubuntu. A v* tag, or a run by hand, also packages the
+# macOS app (spec §10); a pushed v* tag attaches the notarised disk image to its release.
+#
+# AVALONIA_LICENSE_KEY is a repository secret, so every run's tests use the PdfViewer. Without it, as for a pull
+# request from a fork, the PdfViewer's tests skip and everything else runs. The signing secrets are the release
+# environment's, which only v* tags may use.
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to package, such as 0.1.0-test1 (by default 0.0.0-dev.<run number>)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its outdated run. Pushes get a group per ref and commit, so a tag's run doesn't
+# queue behind its branch's.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Tests (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ macos-15, ubuntu-24.04 ]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Build and test
+        env:
+          AVALONIA_LICENSE_KEY: ${{ secrets.AVALONIA_LICENSE_KEY }}
+        run: dotnet test CoffeePdf.sln --configuration Release
+
+  # The check to require on main: it passes only when both runners' tests passed.
+  tests:
+    name: Tests
+    needs: [ test ]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check the jobs' results
+        env:
+          TEST: ${{ needs.test.result }}
+        run: |
+          echo "test: $TEST"
+          if [ "$TEST" = success ]; then exit 0; fi
+          echo "::error::The tests didn't pass"
+          exit 1
+
+  package-mac:
+    name: Package (macos-15)
+    needs: [ test ]
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    # No environment for a branch: the environment would refuse it, failing the job instead of building unsigned.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    runs-on: macos-15
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      notarised: ${{ steps.stapled.outputs.notarised }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Work out the version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            version=${REQUESTED:-0.0.0-dev.$GITHUB_RUN_NUMBER}
+          else
+            version=${REF_NAME#v}
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$version' isn't a version like 1.2.3 or 1.2.3-rc1 (tags are v1.2.3)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Packaging CoffeePDF $version"
+
+      # Secrets can't be tested in an if:, so this step says which are set, without printing them.
+      - name: Check for the signing secrets
+        id: secrets
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_KEY_B64: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          signing=false
+          notary=false
+          if [ -n "$P12" ] && [ -n "$P12_PASSWORD" ] && [ -n "$TEAM_ID" ]; then signing=true; fi
+          if [ -n "$NOTARY_KEY_B64" ] && [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_ISSUER" ]; then notary=true; fi
+          echo "signing=$signing" >> "$GITHUB_OUTPUT"
+          echo "notary=$notary" >> "$GITHUB_OUTPUT"
+          if [ "$signing" = false ]; then
+            echo "::warning::The APPLE_DEVELOPER_ID_* and APPLE_TEAM_ID secrets aren't available (they're the release environment's, for v* tags), so the package is built unsigned"
+          elif [ "$notary" = false ]; then
+            echo "::warning::The NOTARY_* secrets aren't set, so the package is signed but not notarised"
+          fi
+
+      # A keychain of its own, with a random password, holding only the Developer ID certificate.
+      - name: Import the Developer ID certificate
+        if: steps.secrets.outputs.signing == 'true'
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          keychain="$RUNNER_TEMP/coffeepdf-signing.keychain-db"
+          password=$(openssl rand -hex 24)
+          echo "::add-mask::$password"
+          umask 077
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          # Searched first, before the runner's own keychains (listed one to a line, in quotes).
+          keychains=("$keychain")
+          while IFS= read -r line; do
+            line=${line#*\"}
+            line=${line%\"*}
+            if [ -n "$line" ]; then keychains+=("$line"); fi
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "${keychains[@]}"
+          identity=$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | grep -F "($TEAM_ID)" | head -n 1)
+          if [ -z "$identity" ]; then
+            echo "::error::APPLE_DEVELOPER_ID_P12 holds no Developer ID Application identity for APPLE_TEAM_ID"
+            exit 1
+          fi
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Decode the notary's key
+        if: steps.secrets.outputs.signing == 'true' && steps.secrets.outputs.notary == 'true'
+        env:
+          NOTARY_KEY_B64: ${{ secrets.NOTARY_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$NOTARY_KEY_B64" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+          echo "NOTARY_KEY=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_ENV"
+
+      - name: Build the package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          AVALONIA_LICENSE_KEY: ${{ secrets.AVALONIA_LICENSE_KEY }}
+          NOTARY_KEY_ID: ${{ steps.secrets.outputs.notary == 'true' && secrets.NOTARY_KEY_ID || '' }}
+          NOTARY_ISSUER: ${{ steps.secrets.outputs.notary == 'true' && secrets.NOTARY_ISSUER || '' }}
+          OUT_DIR: ${{ runner.temp }}/package
+        run: packaging/mac/package.sh "$VERSION"
+
+      # What release-mac trusts: the disk image's own stapled ticket, not which secrets were set.
+      - name: Check the disk image is notarised
+        id: stapled
+        env:
+          DMG: ${{ runner.temp }}/package/CoffeePDF-${{ steps.version.outputs.version }}.dmg
+        run: |
+          if xcrun stapler validate "$DMG"; then
+            echo "notarised=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::The disk image isn't notarised, so it isn't attached to any release"
+            echo "notarised=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload the disk image
+        uses: actions/upload-artifact@v7
+        with:
+          name: CoffeePDF-${{ steps.version.outputs.version }}-macos
+          path: ${{ runner.temp }}/package/CoffeePDF-${{ steps.version.outputs.version }}.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      # The keychain and the decoded files go whatever happened.
+      - name: Remove the keychain and keys
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/coffeepdf-signing.keychain-db"
+          if [ -f "$keychain" ]; then security delete-keychain "$keychain" || true; fi
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary-key.p8"
+
+  # Attaches the notarised disk image to the tag's GitHub release, making the release if there's none yet, only for a
+  # pushed v* tag. Kept apart from package-mac so only this short job, which builds nothing and sees no signing secret,
+  # can write to the repository.
+  release-mac:
+    name: Release (macOS)
+    needs: package-mac
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.package-mac.outputs.notarised == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the disk image
+        uses: actions/download-artifact@v8
+        with:
+          name: CoffeePDF-${{ needs.package-mac.outputs.version }}-macos
+          path: ${{ runner.temp }}/package
+
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.package-mac.outputs.version }}
+        run: |
+          dmg="$RUNNER_TEMP/package/CoffeePDF-$VERSION.dmg"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            prerelease=()
+            if [[ "$VERSION" == *-* ]]; then prerelease=(--prerelease); fi
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "CoffeePDF $VERSION" \
+              --notes "CoffeePDF $VERSION for macOS on Apple silicon: open the disk image and drag CoffeePDF to Applications." \
+              "${prerelease[@]}"
+          fi
+          gh release upload "$TAG" "$dmg" --repo "$GITHUB_REPOSITORY" --clobber

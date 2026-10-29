@@ -284,7 +284,7 @@ The channel has no machine-readable contract the way the API's `openapi.yaml` is
 
 - **Pull requests** run `dotnet test` on a macOS runner (Linux too, for the core).
 - **A `v1.2.3` tag** builds the app, signs it with the owner's Developer ID, notarises it, and attaches `CoffeePDF-1.2.3.dmg` to the tag's GitHub release.
-  - It uses a `release` environment holding the Apple signing and notarising secrets (as the Helper's `helper-release` does) and the Avalonia licence key.
+  - It uses a `release` environment holding the Apple signing and notarising secrets, as the Helper's `helper-release` does. The Avalonia licence key is a repository secret instead, since every run's tests need it (changed in Phase 0).
   - Without those secrets, the package builds unsigned and is only uploaded as an artifact.
 - **The hardened runtime** needs `allow-jit` for .NET, as the Helper's does. PDFium's native library is signed with the owner's Developer ID.
 - **The Avalonia licence key** comes from the environment at build time: a CI secret, or the owner's own machine. It's never committed.
