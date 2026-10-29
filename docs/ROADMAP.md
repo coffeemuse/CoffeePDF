@@ -1,14 +1,14 @@
 # CoffeePDF roadmap
 
 - **Status:** v1 designed on 2026-10-29 ([spec](superpowers/specs/2026-10-29-coffeepdf-v1-design.md)). Phase 0 is
-  built ([plan](superpowers/plans/2026-10-29-phase-0-foundation-spike.md)). Phase 1's plan waits on the keyed run, the
-  owner's checks on the Mac and the owner's decisions in the spec's §16.
+  built ([plan](superpowers/plans/2026-10-29-phase-0-foundation-spike.md)), and its keyed run is done. Phase 1's plan
+  waits on the owner's checks on the Mac and the owner's decisions in the spec's §16.
 
 ## v1: read and mark up
 
 | Phase | What | Status |
 |---|---|---|
-| 0. Foundation spike | The solution, CI, the licence key, a window that shows a PDF, a signed and notarised package; the spec's §14 checks | built 2026-10-29; findings in the spec's §16, with the keyed run and the owner's checks pending |
+| 0. Foundation spike | The solution, CI, the licence key, a window that shows a PDF, a signed and notarised package; the spec's §14 checks | built 2026-10-29; keyed run done 2026-10-29; the owner's checks on the Mac pending; findings in the spec's §16 |
 | 1. Standalone app | Viewing, markup, forms, printing, Preferences, Open Recent, the default PDF app | not started |
 | 2. Healdan in CoffeePDF | The channel client, the window modes and the flows of spec §6, against a fake Helper | not started |
 | 3. Healdan's milestone | Spec §4.4, through its own spec in Healdan's repository | not started |
