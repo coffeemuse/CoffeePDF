@@ -2,8 +2,7 @@
 
 - **Status:** v1 designed on 2026-10-29 ([spec](superpowers/specs/2026-10-29-coffeepdf-v1-design.md)). Phase 0 is
   built ([plan](superpowers/plans/2026-10-29-phase-0-foundation-spike.md)), and its keyed run is done. Phase 1's plan
-  waits on the owner's checks on the Mac, the owner's decisions in the spec's §16, and the save-pattern question in its
-  row 2.
+  waits on the owner's checks on the Mac and the owner's decisions in the spec's §16.
 
 ## v1: read and mark up
 
