@@ -30,3 +30,4 @@ Each gets its own design session first.
 ## Open decisions for the owner
 
 - The licence, before the repository goes public (spec §12).
+- Phase 0's decisions (the markup author, and builds without the key), and the owner's to-do list for the pending checks: the spec's §16.
