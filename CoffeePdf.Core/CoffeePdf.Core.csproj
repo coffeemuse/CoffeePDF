@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything CoffeePDF decides that doesn't need a window (spec §4.3). It references no Avalonia assembly. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>CoffeePdf.Core</RootNamespace>
+  </PropertyGroup>
+</Project>
