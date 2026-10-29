@@ -43,9 +43,11 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
         });
 
         Assert.NotEmpty(authors);
-        output.WriteLine($"A new note's author: {(authors.Count == 0 ? "(note not found)" : authors[0] ?? "(none)")}");
-        output.WriteLine($"For comparison, this account's user name is {Environment.UserName}");
-        output.WriteLine($"and its macOS full name, the Markup author's default in spec §5, is {FullName()}");
+        // The probe compares the author with the account's names rather than printing them, so its output can be
+        // copied into the findings without carrying personal details.
+        output.WriteLine($"A new note's author: {Describe(authors[0])}");
+        var fullName = FullName() switch { null => "not available (not macOS)", "" => "empty", _ => "non-empty" };
+        output.WriteLine($"The macOS full name, the Markup author's default in spec §5, is {fullName}");
     }
 
     [PdfViewerFact]
@@ -122,11 +124,20 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
         output.WriteLine($"Without a licence key: {observed}");
     }
 
-    /// <summary>The macOS full name, from <c>id -F</c>; Linux has no such option.</summary>
-    private static string FullName()
+    /// <summary>What <paramref name="author"/> is, said without quoting it, since it may be one of the account's names.</summary>
+    private static string Describe(string? author) => author switch
+    {
+        null or "" => "(none)",
+        var a when a == FullName() => "the account's macOS full name",
+        var a when a == Environment.UserName => "the account's user name",
+        var a => $"set, to something other than the account's names ({a.Length} characters)",
+    };
+
+    /// <summary>The macOS full name, from <c>id -F</c>, or null where there's no such option (not macOS).</summary>
+    private static string? FullName()
     {
         if (!OperatingSystem.IsMacOS())
-            return "(not macOS)";
+            return null;
         var start = new ProcessStartInfo("id") { RedirectStandardOutput = true };
         start.ArgumentList.Add("-F");
         using var id = Process.Start(start)!;
