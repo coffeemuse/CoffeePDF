@@ -1,12 +1,13 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using CoffeePdf.Tests.Fixtures;
+using CoffeePdf.Windows;
 using Xunit.Abstractions;
 
 namespace CoffeePdf.Tests.Viewer;
 
 /// <summary>
-/// Spec §14 items 2 and 3: questions with no right answer to assert, so these print what the PdfViewer does, for the
+/// Spec §14 items 2, 3 and 4: questions with no right answer to assert, so these print what the PdfViewer does, for the
 /// findings. Run with: dotnet test --filter Category=Probe --logger "console;verbosity=detailed"
 /// </summary>
 [Trait("Category", "PdfViewer")]
@@ -78,6 +79,46 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
             output.WriteLine($"{name}: inode {inodeBefore} -> {Inode(path)} ({(inodeBefore == Inode(path) ? "written in place" : "replaced")})");
             output.WriteLine($"{name}: events: {string.Join("; ", events)}");
         }
+    }
+
+    /// <summary>
+    /// Spec §14 item 4: what the PdfViewer does in the app's own window without the licence key. This probe passes
+    /// whatever it observes, since what happens is the question: a window that shows the PDF, a load error, an error
+    /// message, an exception or no answer at all.
+    /// </summary>
+    [PdfViewerUnlicensedFact]
+    public async Task What_the_viewer_does_without_a_licence()
+    {
+        var path = Write("unlicensed.pdf", MinimalPdf.Build());
+
+        var observed = await Headless.RunAsync(async () =>
+        {
+            var stage = "constructing the DocumentWindow";
+            try
+            {
+                var window = new DocumentWindow();
+                var answer = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                window.Viewer.DocumentLoaded += (_, _) => answer.TrySetResult($"DocumentLoaded, {window.Viewer.PageCount} page(s)");
+                window.Viewer.LoadError += (_, e) => answer.TrySetResult($"LoadError: {e.Message}");
+                stage = "showing it";
+                window.Show();
+                stage = "loading the PDF";
+                window.Load(path);
+                stage = "waiting for the answer";
+                var result = await Task.WhenAny(answer.Task, Task.Delay(TimeSpan.FromSeconds(15)));
+                var outcome = result == answer.Task ? answer.Task.Result : "no DocumentLoaded or LoadError within 15 s";
+                return $"{outcome}; Viewer.ErrorMessage: {window.Viewer.ErrorMessage ?? "(none)"}";
+            }
+            catch (Exception e)
+            {
+                var chain = new List<string>();
+                for (var inner = e; inner is not null; inner = inner.InnerException)
+                    chain.Add($"{inner.GetType().Name}: {inner.Message}");
+                return $"threw while {stage}: {string.Join(" <- ", chain)}";
+            }
+        });
+
+        output.WriteLine($"Without a licence key: {observed}");
     }
 
     private static string Inode(string path)

@@ -5,7 +5,9 @@
 #   packaging/mac/package.sh <version>        e.g. 0.1.0, or 0.1.0-rc1 (from the tag v0.1.0-rc1)
 #
 # Environment (all optional):
-#   AVALONIA_LICENSE_KEY  the Avalonia licence key the PdfViewer checks. Unset, the app builds, but shows no PDF.
+#   AVALONIA_LICENSE_KEY  the Avalonia licence key the PdfViewer checks. Unset, the app builds, but its PdfViewer throws
+#                   as soon as a window creates it (the probe `What_the_viewer_does_without_a_licence`, spec §16),
+#                   so it shows no PDF.
 #   SIGN_IDENTITY   the Developer ID Application identity to sign with, as `security find-identity` names it. Unset,
 #                   the app gets only an ad-hoc signature, which Gatekeeper refuses on any other Mac. Set but not in
 #                   the keychains, the script stops: it never falls back to ad-hoc when a signature was asked for.
@@ -45,7 +47,7 @@ trap 'rm -rf "$work"' EXIT
 rm -rf "$app" "$dmg"
 
 [ -n "${AVALONIA_LICENSE_KEY:-}" ] ||
-  warn "WITHOUT the Avalonia licence key: AVALONIA_LICENSE_KEY is unset, so the app's PdfViewer refuses to show a PDF"
+  warn "WITHOUT the Avalonia licence key: AVALONIA_LICENSE_KEY is unset, so the PdfViewer throws as soon as a window creates it, and the app shows no PDF"
 
 # --- Who signs ------------------------------------------------------------------------------------------------------
 

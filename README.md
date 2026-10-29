@@ -9,8 +9,9 @@ An everyday PDF app for macOS, in the spirit of Preview, that works directly wit
 ## Building
 
 You need the .NET 10 SDK (`global.json` pins it). The PdfViewer needs an Avalonia licence that covers it, whose key
-the build reads from `AVALONIA_LICENSE_KEY`. Without the key everything builds, the PdfViewer's tests are skipped,
-and the app can't show a PDF.
+the build reads from `AVALONIA_LICENSE_KEY`. Without the key everything builds and the PdfViewer's tests are skipped,
+but the PdfViewer throws as soon as a window creates it, so the app can't show a PDF (the probe
+`What_the_viewer_does_without_a_licence`, spec §16).
 
 ```bash
 export AVALONIA_LICENSE_KEY=…   # from portal.avaloniaui.net; never commit it
