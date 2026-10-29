@@ -1,11 +1,13 @@
 name: CI
 
-# Tests CoffeePDF on every push and pull request, on macOS, with the core's tests on Ubuntu too. A v* tag, or a run by hand, also packages the
-# macOS app (spec §10); a pushed v* tag attaches the notarised disk image to its release.
+# Tests CoffeePDF on every push and pull request: the whole solution on macOS, and the core's tests on Ubuntu. A v* tag,
+# or a run by hand, also packages the macOS app (spec §10); a pushed v* tag attaches the notarised disk image to its
+# release. The probes (Category=Probe) are for running by hand, so CI leaves them out.
 #
-# AVALONIA_LICENSE_KEY is a repository secret, so every run's tests use the PdfViewer. Without it, as for a pull
-# request from a fork, the PdfViewer's tests skip and everything else runs. The signing secrets are the release
-# environment's, which only v* tags may use.
+# AVALONIA_LICENSE_KEY is a repository secret, passed only to the macOS legs, since only they run the PdfViewer: the
+# Ubuntu leg runs the core's tests. Without it, as for a pull request from a fork, the PdfViewer's tests skip and
+# everything else runs. A push to main or a tag warns about it, and a v* tag's package stops: a release must not ship
+# a PdfViewer that throws. The signing secrets are the release environment's, which only v* tags may use.
 
 on:
   push:
@@ -53,10 +55,21 @@ jobs:
         with:
           global-json-file: global.json
 
+      # Secrets can't be tested in an if:, so this reads the key through env:, and never prints it. A warning, not a
+      # failure: a pull request without secrets must still pass.
+      - name: Check for the licence key
+        if: github.event_name == 'push' && matrix.runner == 'macos-15'
+        env:
+          KEY: ${{ secrets.AVALONIA_LICENSE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::The AVALONIA_LICENSE_KEY secret isn't set, so the PdfViewer's tests are skipped"
+          fi
+
       - name: Build and test
         env:
-          AVALONIA_LICENSE_KEY: ${{ secrets.AVALONIA_LICENSE_KEY }}
-        run: dotnet test "${{ matrix.target }}" --configuration Release
+          AVALONIA_LICENSE_KEY: ${{ matrix.runner == 'macos-15' && secrets.AVALONIA_LICENSE_KEY || '' }}
+        run: dotnet test "${{ matrix.target }}" --configuration Release --filter "Category!=Probe"
 
   # The check to require on main: it passes only when both runners' tests passed.
   tests:
@@ -113,6 +126,17 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Packaging CoffeePDF $version"
+
+      # Secrets can't be tested in an if:, so this reads the key through env:, and never prints it.
+      - name: Check for the licence key
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEY: ${{ secrets.AVALONIA_LICENSE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::The AVALONIA_LICENSE_KEY secret isn't set, and a release's PdfViewer throws without it"
+            exit 1
+          fi
 
       # Secrets can't be tested in an if:, so this step says which are set, without printing them.
       - name: Check for the signing secrets
