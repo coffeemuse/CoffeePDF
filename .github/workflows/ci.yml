@@ -1,6 +1,6 @@
 name: CI
 
-# Tests CoffeePDF on every push and pull request, on macOS and Ubuntu. A v* tag, or a run by hand, also packages the
+# Tests CoffeePDF on every push and pull request, on macOS, with the core's tests on Ubuntu too. A v* tag, or a run by hand, also packages the
 # macOS app (spec §10); a pushed v* tag attaches the notarised disk image to its release.
 #
 # AVALONIA_LICENSE_KEY is a repository secret, so every run's tests use the PdfViewer. Without it, as for a pull
@@ -35,7 +35,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ macos-15, ubuntu-24.04 ]
+        include:
+          - runner: macos-15
+            target: CoffeePdf.sln
+          # Spec §10: Linux runs the core's tests; the app's (Avalonia headless, the PdfViewer) run on macOS.
+          - runner: ubuntu-24.04
+            target: CoffeePdf.Core.Tests/CoffeePdf.Core.Tests.csproj
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
 
@@ -51,7 +56,7 @@ jobs:
       - name: Build and test
         env:
           AVALONIA_LICENSE_KEY: ${{ secrets.AVALONIA_LICENSE_KEY }}
-        run: dotnet test CoffeePdf.sln --configuration Release
+        run: dotnet test "${{ matrix.target }}" --configuration Release
 
   # The check to require on main: it passes only when both runners' tests passed.
   tests:
