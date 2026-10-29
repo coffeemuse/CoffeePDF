@@ -32,7 +32,8 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
         var authors = await Headless.RunAsync(async () =>
         {
             var viewer = await Viewers.OpenAsync(path);
-            await viewer.AddStickyNoteAsync(0, 300, 400, "Probe");
+            var added = await viewer.AddStickyNoteAsync(0, 300, 400, "Probe");
+            Assert.True(added >= 0, "AddStickyNoteAsync failed (returned -1): the note couldn't be added headless");
             await viewer.SaveAsync();
             viewer.CloseDocument();
             var reopened = await Viewers.OpenAsync(path);
@@ -40,6 +41,7 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
                 .Where(a => a.Contents == "Probe").Select(a => a.Author).ToList();
         });
 
+        Assert.NotEmpty(authors);
         output.WriteLine($"A new note's author: {(authors.Count == 0 ? "(note not found)" : authors[0] ?? "(none)")}");
         output.WriteLine($"For comparison, this account's user name is {Environment.UserName}");
     }
@@ -62,7 +64,8 @@ public sealed class ViewerProbes(ITestOutputHelper output) : IDisposable
             var took = await Headless.RunAsync(async () =>
             {
                 var viewer = await Viewers.OpenAsync(path);
-                await viewer.AddStickyNoteAsync(0, 300, 400, "Probe");
+                var added = await viewer.AddStickyNoteAsync(0, 300, 400, "Probe");
+                Assert.True(added >= 0, "AddStickyNoteAsync failed (returned -1): the note couldn't be added headless");
                 var clock = Stopwatch.StartNew();
                 await viewer.SaveAsync();
                 return clock.Elapsed;

@@ -27,7 +27,8 @@ public sealed class ViewerSaveTests : IDisposable
         await Headless.RunAsync(async () =>
         {
             var viewer = await Viewers.OpenAsync(path);
-            await viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var added = await viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            Assert.True(added >= 0, "AddStickyNoteAsync failed (returned -1): the note couldn't be added headless");
             await viewer.SaveAsync();
             return true;
         });
@@ -47,7 +48,8 @@ public sealed class ViewerSaveTests : IDisposable
         var annotations = await Headless.RunAsync(async () =>
         {
             var viewer = await Viewers.OpenAsync(path);
-            await viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var added = await viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            Assert.True(added >= 0, "AddStickyNoteAsync failed (returned -1): the note couldn't be added headless");
             await viewer.SaveAsync();
             viewer.CloseDocument();
             var reopened = await Viewers.OpenAsync(path);
@@ -66,7 +68,8 @@ public sealed class ViewerSaveTests : IDisposable
         var (afterEdit, afterSave) = await Headless.RunAsync(async () =>
         {
             var viewer = await Viewers.OpenAsync(path);
-            await viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var added = await viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            Assert.True(added >= 0, "AddStickyNoteAsync failed (returned -1): the note couldn't be added headless");
             var edited = viewer.IsDirty;
             await viewer.SaveAsync();
             return (edited, viewer.IsDirty);

@@ -14,7 +14,7 @@ namespace CoffeePdf.Tests.Fixtures;
 /// </summary>
 internal static class SignedPdf
 {
-    /// <summary>Room for the CMS blob in hex, about 3 KB of it here; the rest stays zeros, as signers leave it.</summary>
+    /// <summary>Room for the CMS blob in hex, about 2.2 KB of it here; the rest stays zeros, as signers leave it.</summary>
     private const int ContentsHexLength = 16384;
 
     private const string ByteRangePlaceholder = "[0000000000 0000000000 0000000000 0000000000]";
