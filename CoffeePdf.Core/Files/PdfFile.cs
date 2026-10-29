@@ -18,7 +18,7 @@ public static class PdfFile
             var read = stream.ReadAtLeast(buffer, HeaderWindow, throwOnEndOfStream: false);
             return buffer.AsSpan(0, read).IndexOf(Header) >= 0;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
             return false;
         }

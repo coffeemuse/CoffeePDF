@@ -39,4 +39,8 @@ public sealed class PdfFileTests : IDisposable
     [Fact]
     public void A_folder_isnt_a_pdf() =>
         Assert.False(PdfFile.IsPdf(_dir));
+
+    [Fact]
+    public void An_empty_path_isnt_a_pdf() =>
+        Assert.False(PdfFile.IsPdf(""));
 }
