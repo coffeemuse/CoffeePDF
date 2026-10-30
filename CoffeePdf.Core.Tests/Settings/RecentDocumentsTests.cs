@@ -87,4 +87,25 @@ public sealed class RecentDocumentsTests : IDisposable
 
         Assert.Empty(recent.Paths);
     }
+
+    [Fact]
+    public void A_list_that_cant_be_written_is_dropped_without_failing_the_caller()
+    {
+        var recent = new RecentDocuments(_dir);
+        var a = Touch("a.pdf");
+        var b = Touch("b.pdf");
+        recent.Add(a);
+        var mode = File.GetUnixFileMode(_dir);
+        File.SetUnixFileMode(_dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            Assert.Null(Record.Exception(() => recent.Add(b)));
+        }
+        finally
+        {
+            File.SetUnixFileMode(_dir, mode);
+        }
+
+        Assert.Equal(new[] { a }, recent.Paths);
+    }
 }

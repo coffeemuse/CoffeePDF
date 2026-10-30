@@ -5,7 +5,8 @@ namespace CoffeePdf.Core.Settings;
 
 /// <summary>
 /// File › Open Recent (spec §2.1): the PDFs last opened or saved as, newest first, as a JSON array of full paths in
-/// <c>recent.json</c> beside the preferences. Phase 2 keeps Healdan's copies out (§6.10).
+/// <c>recent.json</c> beside the preferences. A change that can't be written is dropped. Phase 2 keeps Healdan's copies
+/// out (§6.10).
 /// </summary>
 public sealed class RecentDocuments(string folder)
 {
@@ -47,8 +48,16 @@ public sealed class RecentDocuments(string folder)
 
     private void Save(List<string> paths)
     {
-        Directory.CreateDirectory(folder);
-        AtomicFile.Write(FilePath, JsonSerializer.SerializeToUtf8Bytes(paths.Take(Capacity).ToList()));
+        try
+        {
+            Directory.CreateDirectory(folder);
+            AtomicFile.Write(FilePath, JsonSerializer.SerializeToUtf8Bytes(paths.Take(Capacity).ToList()));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Open Recent is a convenience, so a list that can't be written is dropped rather than failing the save or
+            // open that changed it.
+        }
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }
