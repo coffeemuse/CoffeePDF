@@ -4,7 +4,8 @@
   CoffeePDF.app's Info.plist (spec §4.3, §10). package.sh replaces @VERSION@ with the numeric part of the version it
   builds (1.2.3 from v1.2.3-rc1). CFBundleDocumentTypes declares PDFs, at the Alternate rank, so CoffeePDF is offered
   in Open With and can be made the default without taking over from Preview on install. The bundle identifier is
-  what the Healdan Helper launches CoffeePDF by (spec §4.4), so it never changes.
+  what the Healdan Helper launches CoffeePDF by (spec §4.4), so it never changes. CFBundleIconFile names
+  CoffeePDF.icns, which make-icon.sh makes.
 -->
 <plist version="1.0">
 <dict>
@@ -13,6 +14,8 @@
   <key>CFBundleDisplayName</key>
   <string>CoffeePDF</string>
   <key>CFBundleExecutable</key>
+  <string>CoffeePDF</string>
+  <key>CFBundleIconFile</key>
   <string>CoffeePDF</string>
   <key>CFBundleIdentifier</key>
   <string>com.healdan.coffeepdf</string>

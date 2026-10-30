@@ -24,6 +24,7 @@ dotnet test CoffeePdf.sln                                    # everything; the P
 dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find
 dotnet run --project CoffeePdf -- <file.pdf>                 # the app
 packaging/mac/package.sh 1.2.3                               # CoffeePDF.app and its .dmg, on a Mac
+packaging/mac/make-icon.sh                                   # CoffeePDF.icns from packaging/icon/CoffeePDF.png; commit it
 ```
 
 ## Rules
