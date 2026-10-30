@@ -20,19 +20,6 @@ public sealed class ClosingTests : IDisposable
         return path;
     }
 
-    /// <summary>
-    /// Reads the author of each annotation on the first page of <paramref name="path"/> as <paramref name="window"/>
-    /// begins to close, into the returned list. The PdfViewer takes PDFium down when its last document closes, and
-    /// <see cref="PdfAnnotations.Read"/> needs it (a read with no window open crashes the test host), so the file is
-    /// read while the window still holds it up. That is also after the save, if the save came first.
-    /// </summary>
-    private static List<string?> AuthorsAsClosing(DocumentWindow window, string path)
-    {
-        var authors = new List<string?>();
-        window.Closing += (_, _) => authors.AddRange(PdfAnnotations.Read(File.ReadAllBytes(path), 0).Select(a => a.Author));
-        return authors;
-    }
-
     /// <summary>A window with an unsaved note, whose prompt answers <paramref name="answer"/> and counts its asks.</summary>
     private static async Task<(DocumentWindow Window, Func<bool> Closed, Func<int> Asked)> EditedAsync(string path, SaveChoice answer)
     {
@@ -111,16 +98,15 @@ public sealed class ClosingTests : IDisposable
     {
         var path = Write("doc.pdf");
 
-        var (closed, authors) = await Headless.RunAsync(async () =>
+        var closed = await Headless.RunAsync(async () =>
         {
             var (window, isClosed, _) = await EditedAsync(path, SaveChoice.Save);
-            var saved = AuthorsAsClosing(window, path);
             await window.CloseWithPromptAsync();
-            return (isClosed(), saved);
+            return isClosed();
         });
 
         Assert.True(closed);
-        Assert.Equal(TestWindows.Author, Assert.Single(authors));
+        Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(path), 0)).Author);
     }
 
     [PdfViewerFact]
@@ -164,15 +150,14 @@ public sealed class ClosingTests : IDisposable
     {
         var path = Write("doc.pdf");
 
-        var (second, closedEarly, first, closed, asked, authors) = await Headless.RunAsync(async () =>
+        var (second, closedEarly, first, closed, asked) = await Headless.RunAsync(async () =>
         {
             var (window, isClosed, asks) = await EditedAsync(path, SaveChoice.Save);
-            var saved = AuthorsAsClosing(window, path);
             var closing = window.CloseWithPromptAsync(); // asks, and is then saving, which counts as unsaved changes
             var again = await window.CloseWithPromptAsync();
             var early = isClosed();
             var done = await closing;
-            return (again, early, done, isClosed(), asks(), saved);
+            return (again, early, done, isClosed(), asks());
         });
 
         Assert.False(second);
@@ -180,7 +165,7 @@ public sealed class ClosingTests : IDisposable
         Assert.True(first);
         Assert.True(closed);
         Assert.Equal(1, asked);
-        Assert.Equal(TestWindows.Author, Assert.Single(authors));
+        Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(path), 0)).Author);
     }
 
     [PdfViewerFact]
