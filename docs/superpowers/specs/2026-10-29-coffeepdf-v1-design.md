@@ -397,7 +397,7 @@ Phase 0 is built, and the keyed run is done (2026-10-29). The owner answered its
      The copy is the same bblanchon.PDFium 157 binary, copied at build time, so the two load as separate images. What
      the build observed is in Phase 1 (built 2026-10-30), below.
    - **When the author is written.** In a save CoffeePDF owns. The PdfViewer saves to memory, CoffeePDF writes the author as an incremental update, and a temporary file is renamed over the file. That is one write, in Decision 3's pattern, with the original bytes kept.
-   - **Which annotations are new.** Markup annotations on the pages `AnnotationAdded` reported, with a `/NM` and no `/T`, whose `/NM` isn't an authorless annotation's in the file the save replaces.
+   - **Which annotations are new.** Markup annotations on the pages `AnnotationAdded` reported, with no `/T`, that aren't one of the authorless annotations in the file the save replaces. One with a `/NM` is matched by its `/NM`. One without must carry the PdfViewer's `/SNC` mark, and is matched by its subtype, rectangle and text (owner, 2026-10-30, after check 12b: the PdfViewer leaves an empty sticky note unnamed; Phase 1, below).
    - **Keeping the author.** Every save writes it again, since the PdfViewer's own copy never has it.
    - **The toolbar's tools.** The planning probe found notes, stamps and highlights alike: a `/NM` and no `/T`. The rule covers every markup type.
 2. **A build without the key (item 4).** Does the owner accept `AvaloniaUILicenseDisableTask=true` for builds without the key? Without it, such a build fails with AVLIC0001. With it, contributors without a licence can still build and test everything but the PdfViewer (observed here: 20 passed, 6 skipped), and CI without the secret is expected to (it hasn't run). Observed (the probe `What_the_viewer_does_without_a_licence`): without the key the PdfViewer doesn't work in a reduced way. It throws when a window creates it, so a keyless build can't run the app or show a PDF (expected, not run). That raises no licensing question, since the control is unusable unlicensed. The plan's `WarningsNotAsErrors` can't work, because the missing key is an error. If the owner declines, keyless builds fail until another route is found.
@@ -477,6 +477,21 @@ what was planned. This is what the build showed, and what it changed.
     by its content, whatever its name; a file they can't read refuses the commit.
   - Tests save with the made-up author `Test Reviewer`, which `Headless` sets before the app starts.
   - CI masks the Developer ID identity in its logs.
+- **Check 12b, a password-protected PDF (the owner's checks, 2026-10-30).** Its markups saved without an author, for
+  two reasons, each now covered by a test.
+  - The PdfViewer's own password prompt opens the file but leaves `Password` unset, so the save couldn't open the
+    encrypted bytes to write the author. The window keeps what's typed into the prompt's box (`PART_PasswordTextBox` in
+    the 12.0.1 template). A test drives the prompt, so a renamed part fails it.
+  - The recheck's note was empty, and the PdfViewer names a sticky note (`/NM`) only when it has text. Observed: with
+    text it got an `av-` name, and empty, through `AddStickyNoteAsync` or the Note tool, it got none, so the rule skipped
+    it. Every other markup in the owner's check files had a name.
+  - The rule now matches an unnamed note by its subtype, rectangle and text, and only one carrying `/SNC`, the key the
+    PdfViewer writes into each sticky note it makes (owner's choice of matching by shape; Decision 1). The mark is needed
+    because the PdfViewer's save resizes another app's note, below, so without it such a note would have looked new.
+- **A finding for the owner: the PdfViewer's save changes another app's note that has no appearance.** Observed: it gave
+  the note an appearance stream and the key `PDFIUM_HasGeneratedAP`, and cut its rectangle to the 20-point icon
+  (`[72 600 96 624]` became `[72 600 92 620]`). Its text, and the absence of `/NM` and `/T`, were kept. Expected, not
+  checked: Preview and Acrobat write an appearance with their notes, so this touches only notes from apps that write none.
 - **A finding for the owner.** Two windows' PdfViewers share one PDFium, which the PdfViewer owns. Whether two documents
   rendering at once is safe is the PdfViewer's own concern, and worth raising with Avalonia under the Pro licence.
   CoffeePDF's own calls no longer share it.

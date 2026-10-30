@@ -17,6 +17,7 @@
     <!-- These fixtures live with the core's tests, which need them without the app; the app's tests compile them too. -->
     <Compile Include="../CoffeePdf.Core.Tests/Fixtures/MinimalPdf.cs" Link="Fixtures/MinimalPdf.cs" />
     <Compile Include="../CoffeePdf.Core.Tests/Fixtures/EncryptedPdf.cs" Link="Fixtures/EncryptedPdf.cs" />
+    <Compile Include="../CoffeePdf.Core.Tests/Fixtures/AnnotatedPdf.cs" Link="Fixtures/AnnotatedPdf.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- The app's tests run on macOS (spec §10), so Unix-only calls such as File.SetUnixFileMode are fine. -->

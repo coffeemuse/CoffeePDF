@@ -67,6 +67,23 @@ internal static unsafe partial class Pdfium
             return FPDFAnnot_SetStringValue(annotation, k, v) != 0;
     }
 
+    /// <summary><paramref name="annotation"/>'s rectangle (<c>/Rect</c>), or null if it has none.</summary>
+    public static (float Left, float Bottom, float Right, float Top)? GetRect(nint annotation)
+    {
+        RectF rect;
+        return FPDFAnnot_GetRect(annotation, &rect) != 0 ? (rect.Left, rect.Bottom, rect.Right, rect.Top) : null;
+    }
+
+    /// <summary><c>FS_RECTF</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RectF
+    {
+        public float Left;
+        public float Top;
+        public float Right;
+        public float Bottom;
+    }
+
     /// <summary>Writes <paramref name="document"/> as an incremental update.</summary>
     public static byte[] SaveIncremental(nint document)
     {
@@ -127,6 +144,7 @@ internal static unsafe partial class Pdfium
     [LibraryImport(Library)] private static partial int FPDFAnnot_HasKey(nint annotation, byte* key);
     [LibraryImport(Library)] private static partial CULong FPDFAnnot_GetStringValue(nint annotation, byte* key, char* buffer, CULong length);
     [LibraryImport(Library)] private static partial int FPDFAnnot_SetStringValue(nint annotation, byte* key, char* value);
+    [LibraryImport(Library)] private static partial int FPDFAnnot_GetRect(nint annotation, RectF* rect);
     [LibraryImport(Library)] private static partial int FPDF_SaveAsCopy(nint document, FileWrite* writer, CULong flags);
 }
 

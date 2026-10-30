@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using CoffeePdf.Core.Pdf;
+using CoffeePdf.Core.Tests.Fixtures;
 using CoffeePdf.Tests.Fixtures;
 
 namespace CoffeePdf.Tests.Windows;
@@ -40,6 +41,45 @@ public sealed class DocumentWindowSaveTests : IDisposable
         Assert.Empty(errors);
         var note = Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(path), 0));
         Assert.Equal(Author, note.Author);
+    }
+
+    [PdfViewerFact]
+    public async Task A_save_writes_the_markup_author_into_an_empty_note()
+    {
+        // The PdfViewer leaves an empty note unnamed (the owner's check 12b), so it's told apart by its shape.
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+
+        var (saved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "");
+            return (await window.SaveAsync(), errorList);
+        });
+
+        Assert.True(saved);
+        Assert.Empty(errors);
+        var note = Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(path), 0));
+        Assert.Null(note.Name);
+        Assert.Equal(Author, note.Author);
+    }
+
+    [PdfViewerFact]
+    public async Task Another_apps_unnamed_authorless_note_stays_authorless()
+    {
+        // An unnamed note is told apart by its shape, which the PdfViewer's save must keep as it was.
+        var path = Write("noted.pdf", AnnotatedPdf.Build(AnnotatedPdf.Note(null, null)));
+
+        var (saved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "");
+            return (await window.SaveAsync(), errorList);
+        });
+
+        Assert.True(saved);
+        Assert.Empty(errors);
+        var authors = PdfAnnotations.Read(File.ReadAllBytes(path), 0).Select(a => a.Author).ToList();
+        Assert.Equal(new[] { null, Author }, authors);
     }
 
     [PdfViewerFact]
@@ -89,8 +129,9 @@ public sealed class DocumentWindowSaveTests : IDisposable
     [PdfViewerFact]
     public async Task A_pdf_unlocked_in_the_PdfViewers_prompt_saves_its_notes_with_the_author()
     {
-        // The owner's check 12b: the prompt opens the file but leaves Viewer.Password unset, so the window keeps what's
-        // typed there. This drives the PdfViewer 12.0.1 prompt by its parts, and fails if a newer template renames them.
+        // The owner's check 12b, an empty note on a PDF opened through the PdfViewer's prompt. The prompt leaves
+        // Viewer.Password unset, so the window keeps what's typed there. This drives the PdfViewer 12.0.1 prompt by its
+        // parts, and fails if a newer template renames them.
         var path = Write("locked.pdf", EncryptedPdf.Build());
 
         var (saved, errors) = await Headless.RunAsync(async () =>
@@ -102,7 +143,7 @@ public sealed class DocumentWindowSaveTests : IDisposable
             box!.Text = EncryptedPdf.UserPassword;
             Visible<Button>(window, b => Equals(b.Content, "Unlock"))!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await TestWindows.WaitForAsync(() => window.Viewer.HasDocument);
-            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "");
             return (await window.SaveAsync(), errorList);
         });
 

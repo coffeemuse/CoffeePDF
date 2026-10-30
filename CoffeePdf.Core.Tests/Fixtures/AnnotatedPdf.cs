@@ -14,10 +14,14 @@ internal static class AnnotatedPdf
         return MinimalPdf.Write(objects);
     }
 
-    /// <summary>A sticky note, with a name (<c>/NM</c>) and an author (<c>/T</c>) when they're given.</summary>
-    public static string Note(string? name, string? author) =>
-        "<< /Type /Annot /Subtype /Text /Rect [72 600 96 624] /Contents (Note)" +
-        (name is null ? "" : $" /NM {TextString(name)}") + (author is null ? "" : $" /T {TextString(author)}") + " /F 4 >>";
+    /// <summary>
+    /// A sticky note, with a name (<c>/NM</c>) and an author (<c>/T</c>) when they're given, its text and its left edge,
+    /// and the <c>/SNC</c> the PdfViewer marks its own notes with when <paramref name="byPdfViewer"/>.
+    /// </summary>
+    public static string Note(string? name, string? author, string contents = "Note", int left = 72, bool byPdfViewer = false) =>
+        $"<< /Type /Annot /Subtype /Text /Rect [{left} 600 {left + 24} 624] /Contents {TextString(contents)}" +
+        (name is null ? "" : $" /NM {TextString(name)}") + (author is null ? "" : $" /T {TextString(author)}") +
+        (byPdfViewer ? " /SNC (255,240,154,255)" : "") + " /F 4 >>";
 
     /// <summary>A text field's widget, with a name and no field name (<c>/T</c>), as a form's kid can have.</summary>
     public static string Widget(string name) =>

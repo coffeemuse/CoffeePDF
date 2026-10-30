@@ -62,11 +62,59 @@ public sealed class MarkupAuthorTests : IDisposable
     }
 
     [Fact]
-    public void A_note_without_a_name_isnt_ours_and_stays_authorless()
+    public void A_new_note_without_a_name_gets_the_author()
     {
-        var pdf = AnnotatedPdf.Build(AnnotatedPdf.Note(null, null));
+        // The PdfViewer leaves an empty note unnamed (the owner's check 12b), and marks it /SNC.
+        var previous = Previous(AnnotatedPdf.Build());
+        var pdf = AnnotatedPdf.Build(AnnotatedPdf.Note(null, null, contents: "", byPdfViewer: true));
 
-        Assert.Same(pdf, MarkupAuthor.Stamp(pdf, null, [0], Author));
+        Assert.Equal(Author, Assert.Single(PdfAnnotations.Read(MarkupAuthor.Stamp(pdf, previous, [0], Author), 0)).Author);
+    }
+
+    [Fact]
+    public void A_note_without_a_name_or_the_PdfViewers_mark_isnt_ours_and_stays_authorless()
+    {
+        // Whatever its shape: the PdfViewer's save resizes another app's note that has no appearance (spec §16).
+        var previous = Previous(AnnotatedPdf.Build(AnnotatedPdf.Note(null, null)));
+        var pdf = AnnotatedPdf.Build(AnnotatedPdf.Note(null, null, left: 200));
+
+        Assert.Same(pdf, MarkupAuthor.Stamp(pdf, previous, [0], Author));
+    }
+
+    [Fact]
+    public void An_unnamed_authorless_note_already_in_the_file_stays_authorless()
+    {
+        var previous = Previous(AnnotatedPdf.Build(AnnotatedPdf.Note(null, null, byPdfViewer: true)));
+        var pdf = AnnotatedPdf.Build(
+            AnnotatedPdf.Note(null, null, byPdfViewer: true),
+            AnnotatedPdf.Note(null, null, left: 200, byPdfViewer: true),
+            AnnotatedPdf.Note(null, null, contents: "Other", byPdfViewer: true));
+
+        var authors = PdfAnnotations.Read(MarkupAuthor.Stamp(pdf, previous, [0], Author), 0).Select(a => a.Author);
+
+        Assert.Equal(new[] { null, Author, Author }, authors);
+    }
+
+    [Fact]
+    public void Each_unnamed_note_in_the_file_accounts_for_one_just_like_it()
+    {
+        var previous = Previous(AnnotatedPdf.Build(AnnotatedPdf.Note(null, null, contents: "", byPdfViewer: true)));
+        var pdf = AnnotatedPdf.Build(
+            AnnotatedPdf.Note(null, null, contents: "", byPdfViewer: true),
+            AnnotatedPdf.Note(null, null, contents: "", byPdfViewer: true));
+
+        var authors = PdfAnnotations.Read(MarkupAuthor.Stamp(pdf, previous, [0], Author), 0).Select(a => a.Author);
+
+        Assert.Equal(new[] { null, Author }, authors);
+    }
+
+    [Fact]
+    public void An_unnamed_note_stamped_at_the_last_save_is_stamped_again()
+    {
+        var previous = Previous(AnnotatedPdf.Build(AnnotatedPdf.Note(null, Author, contents: "", byPdfViewer: true)));
+        var pdf = AnnotatedPdf.Build(AnnotatedPdf.Note(null, null, contents: "", byPdfViewer: true));
+
+        Assert.Equal(Author, Assert.Single(PdfAnnotations.Read(MarkupAuthor.Stamp(pdf, previous, [0], Author), 0)).Author);
     }
 
     [Fact]
