@@ -35,7 +35,9 @@ internal static class TestWindows
         {
             if (DateTime.UtcNow > deadline)
                 throw new TimeoutException("The condition never held");
-            await Task.Yield();
+            // Not Task.Yield: that queues the continuation at the dispatcher's own priority, ahead of the lower-priority
+            // jobs the PdfViewer finishes its work with (an undo's new state, say), which then never run.
+            await Task.Delay(1);
         }
     }
 }

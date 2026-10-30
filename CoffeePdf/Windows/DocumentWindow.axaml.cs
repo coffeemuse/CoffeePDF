@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Pdf.Services;
 using Avalonia.Platform.Storage;
 using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Files;
@@ -37,6 +38,8 @@ public partial class DocumentWindow : Window
         {
             if (_saved && !Viewer.IsDirty)
                 _editedSinceSave = true;
+            MenuItem("Undo").IsEnabled = Viewer.CanUndo;
+            MenuItem("Redo").IsEnabled = Viewer.CanRedo;
             UpdateTitle();
         };
         Viewer.PropertyChanged += (_, e) =>
@@ -69,6 +72,7 @@ public partial class DocumentWindow : Window
         _saved = _editedSinceSave = _saveFailed = false;
         Viewer.Source = _path;
         UpdateTitle();
+        MenuItem("Undo").IsEnabled = MenuItem("Redo").IsEnabled = false;
     }
 
     /// <summary>Saves to the window's file (⌘S). Returns whether it saved; a failure has been shown.</summary>
@@ -165,6 +169,9 @@ public partial class DocumentWindow : Window
         return file?.TryGetLocalPath() is { } target && await SaveToAsync(target);
     }
 
+    /// <summary>Print… (⌘P): the system print dialog, with the unsaved markups, under the file's name.</summary>
+    public Task PrintAsync() => Viewer.PrintAsync(new PrintOptions { Title = Path.GetFileName(_path) ?? "CoffeePDF" });
+
     /// <summary>
     /// Closes the window, first asking to save its changes, if it has any (spec §6.8). Returns false if it stayed
     /// open: the user cancelled, or the save failed.
@@ -254,4 +261,25 @@ public partial class DocumentWindow : Window
     private async void OnSaveAs(object? sender, EventArgs e) => await SaveAsAsync();
 
     private void OnClose(object? sender, EventArgs e) => Close();
+
+    private async void OnPrint(object? sender, EventArgs e) => await PrintAsync();
+
+    private static T Parameter<T>(object? sender) where T : struct, Enum =>
+        Enum.Parse<T>((string)((NativeMenuItem)sender!).CommandParameter!);
+
+    internal void OnTool(object? sender, EventArgs e) => Viewer.ActiveTool = Parameter<PdfViewerTool>(sender);
+    internal void OnViewMode(object? sender, EventArgs e) => Viewer.ViewMode = Parameter<PdfViewMode>(sender);
+    internal void OnSidebar(object? sender, EventArgs e) => Viewer.SidebarMode = Parameter<SidebarMode>(sender);
+    internal void OnUndo(object? sender, EventArgs e) => Viewer.Undo();
+    internal void OnZoomIn(object? sender, EventArgs e) => Viewer.ZoomIn();
+    private void OnRedo(object? sender, EventArgs e) => Viewer.Redo();
+    private void OnFindNext(object? sender, EventArgs e) => Viewer.FindNext();
+    private void OnFindPrevious(object? sender, EventArgs e) => Viewer.FindPrevious();
+    private void OnActualSize(object? sender, EventArgs e) => Viewer.ResetZoom();
+    private void OnZoomToFit(object? sender, EventArgs e) => Viewer.FitPage();
+    private void OnZoomOut(object? sender, EventArgs e) => Viewer.ZoomOut();
+    private void OnFitWidth(object? sender, EventArgs e) => Viewer.FitWidth();
+    private void OnPreviousPage(object? sender, EventArgs e) => Viewer.PreviousPage();
+    private void OnNextPage(object? sender, EventArgs e) => Viewer.NextPage();
+    private void OnToggleBookmark(object? sender, EventArgs e) => Viewer.ToggleBookmarkCurrentPage();
 }
