@@ -11,15 +11,18 @@ namespace CoffeePdf.Windows;
 /// <remarks>
 /// Every save goes through <see cref="SaveToAsync"/>. The PdfViewer saves to memory, <see cref="MarkupAuthor"/> writes
 /// the author into the markups made here, and <see cref="AtomicFile"/> renames the result over the file. The
-/// PdfViewer's own saving is off, so its toolbar and shortcuts can't save around that.
+/// PdfViewer's own saving is off, so its toolbar and shortcuts can't save around that. Saves run one at a time: one
+/// that starts while another is writing waits, and then saves the document as it is by then.
 /// </remarks>
 public partial class DocumentWindow : Window
 {
     // The pages an annotation was added to since the file loaded: the only ones a save writes the author on.
     private readonly HashSet<int> _markedPages = [];
+    private readonly SemaphoreSlim _oneSaveAtATime = new(1, 1);
     private string? _path;
-    private bool _saved;           // a save has worked since the file loaded
-    private bool _editedSinceSave; // an undo or redo since that save, which the PdfViewer's IsDirty misses
+    private int _savesRunning;     // saves begun and not yet over, waiting or writing: the file isn't up to date until they are
+    private bool _saved;           // the PdfViewer has taken a snapshot since the file loaded
+    private bool _editedSinceSave; // an undo or redo since that snapshot, which the PdfViewer's IsDirty misses
     private bool _saveFailed;      // the last save failed, though saving to memory cleared IsDirty
 
     public DocumentWindow()
@@ -44,7 +47,7 @@ public partial class DocumentWindow : Window
     public string? FilePath => _path;
 
     /// <summary>Whether the document has changes its file doesn't.</summary>
-    public bool HasUnsavedChanges => Viewer.HasDocument && (Viewer.IsDirty || _editedSinceSave || _saveFailed);
+    public bool HasUnsavedChanges => Viewer.HasDocument && (Viewer.IsDirty || _editedSinceSave || _saveFailed || _savesRunning > 0);
 
     /// <summary>Shows a save's failure, with a heading and the reason. The tests replace it.</summary>
     internal Func<string, string, Task> ReportError { get; set; }
@@ -70,10 +73,20 @@ public partial class DocumentWindow : Window
     {
         if (!Viewer.HasDocument)
             return false;
+        // Counted from here, not from the snapshot: the PdfViewer clears IsDirty at the snapshot, but until the file is
+        // written the window still has changes the file doesn't.
+        _savesRunning++;
+        UpdateTitle();
+        Exception? failure = null;
+        await _oneSaveAtATime.WaitAsync();
         try
         {
             using var memory = new MemoryStream();
             await Viewer.SaveDocumentAsync(memory);
+            // From the snapshot on, an undo is a change this save doesn't hold, so it's recorded even while the file is
+            // still being written.
+            _saved = true;
+            _editedSinceSave = false;
             var pdf = memory.ToArray();
             var previous = _path;
             int[] pages = [.. _markedPages];
@@ -81,18 +94,31 @@ public partial class DocumentWindow : Window
             var password = Viewer.Password;
             await Task.Run(() => AtomicFile.Write(target, MarkupAuthor.Stamp(pdf, previous, pages, author, password)));
             _path = Path.GetFullPath(target);
-            _saved = true;
-            _editedSinceSave = _saveFailed = false;
-            UpdateTitle();
-            return true;
+            _saveFailed = false;
         }
         catch (Exception error) // whatever stopped it, the user is told, and the changes stay unsaved
         {
+            failure = error;
             _saveFailed = true;
-            UpdateTitle();
-            await ReportError($"“{Path.GetFileName(target)}” couldn’t be saved.", error.Message);
-            return false;
         }
+        finally
+        {
+            _savesRunning--;
+            _oneSaveAtATime.Release();
+            UpdateTitle();
+        }
+        if (failure is null)
+            return true;
+        try
+        {
+            await ReportError($"“{Path.GetFileName(target)}” couldn’t be saved.", failure.Message);
+        }
+        catch (Exception)
+        {
+            // The window may have closed while the file was written, and then there's nothing to show the error over.
+            // The save has failed all the same, and its caller is told so.
+        }
+        return false;
     }
 
     private void UpdateTitle() => Title = DocumentTitle.For(_path, HasUnsavedChanges);

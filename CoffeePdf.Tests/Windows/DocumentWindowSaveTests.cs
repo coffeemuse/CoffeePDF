@@ -26,14 +26,15 @@ public sealed class DocumentWindowSaveTests : IDisposable
         // This also watches the PdfViewer: the author is written only into annotations it names (/NM).
         var path = Write("fixture.pdf", MinimalPdf.Build());
 
-        var saved = await Headless.RunAsync(async () =>
+        var (saved, errors) = await Headless.RunAsync(async () =>
         {
-            var (window, _) = await TestWindows.OpenAsync(path);
+            var (window, errorList) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
-            return await window.SaveAsync();
+            return (await window.SaveAsync(), errorList);
         });
 
         Assert.True(saved);
+        Assert.Empty(errors);
         var note = Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(path), 0));
         Assert.Equal(Author, note.Author);
     }
@@ -43,13 +44,15 @@ public sealed class DocumentWindowSaveTests : IDisposable
     {
         var path = Write("noted.pdf", MinimalPdf.Build(withForeignNote: true));
 
-        await Headless.RunAsync(async () =>
+        var (saved, errors) = await Headless.RunAsync(async () =>
         {
-            var (window, _) = await TestWindows.OpenAsync(path);
+            var (window, errorList) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
-            return await window.SaveAsync();
+            return (await window.SaveAsync(), errorList);
         });
 
+        Assert.True(saved);
+        Assert.Empty(errors);
         var authors = PdfAnnotations.Read(File.ReadAllBytes(path), 0).Select(a => a.Author).ToList();
         Assert.Equal(new string?[] { MinimalPdf.ForeignNoteAuthor, Author }, authors);
     }
@@ -60,15 +63,18 @@ public sealed class DocumentWindowSaveTests : IDisposable
         var original = SignedPdf.Build();
         var path = Write("signed.pdf", original);
 
-        await Headless.RunAsync(async () =>
+        var (firstSaved, secondSaved, errors) = await Headless.RunAsync(async () =>
         {
-            var (window, _) = await TestWindows.OpenAsync(path);
+            var (window, errorList) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "First");
-            await window.SaveAsync();
+            var first = await window.SaveAsync();
             await window.Viewer.AddStickyNoteAsync(0, 200, 200, "Second");
-            return await window.SaveAsync();
+            return (first, await window.SaveAsync(), errorList);
         });
 
+        Assert.True(firstSaved);
+        Assert.True(secondSaved);
+        Assert.Empty(errors);
         var saved = File.ReadAllBytes(path);
         Assert.Equal(original, saved[..original.Length]);
         SignedPdf.VerifyFirstSignature(saved);
@@ -82,17 +88,19 @@ public sealed class DocumentWindowSaveTests : IDisposable
     {
         var path = Write("fixture.pdf", MinimalPdf.Build());
 
-        var (editedTitle, editedUnsaved, savedTitle, savedUnsaved) = await Headless.RunAsync(async () =>
+        var (editedTitle, editedUnsaved, saved, savedTitle, savedUnsaved, errors) = await Headless.RunAsync(async () =>
         {
-            var (window, _) = await TestWindows.OpenAsync(path);
+            var (window, errorList) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
             var (title, unsaved) = (window.Title, window.HasUnsavedChanges);
-            await window.SaveAsync();
-            return (title, unsaved, window.Title, window.HasUnsavedChanges);
+            var saveWorked = await window.SaveAsync();
+            return (title, unsaved, saveWorked, window.Title, window.HasUnsavedChanges, errorList);
         });
 
         Assert.Equal("fixture.pdf — Edited", editedTitle);
         Assert.True(editedUnsaved);
+        Assert.True(saved);
+        Assert.Empty(errors);
         Assert.Equal("fixture.pdf", savedTitle);
         Assert.False(savedUnsaved);
     }
@@ -103,16 +111,93 @@ public sealed class DocumentWindowSaveTests : IDisposable
         // The PdfViewer's IsDirty misses it (spec §16, the planning probe).
         var path = Write("fixture.pdf", MinimalPdf.Build());
 
-        var unsaved = await Headless.RunAsync(async () =>
+        var (saved, unsavedAfterSave, unsavedAfterUndo, errors) = await Headless.RunAsync(async () =>
         {
-            var (window, _) = await TestWindows.OpenAsync(path);
+            var (window, errorList) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
-            await window.SaveAsync();
+            var saveWorked = await window.SaveAsync();
+            var unsaved = window.HasUnsavedChanges;
             await window.Viewer.UndoAsync();
-            return window.HasUnsavedChanges;
+            return (saveWorked, unsaved, window.HasUnsavedChanges, errorList);
         });
 
+        // The save worked and left nothing unsaved, so the undo is what brings the unsaved changes back.
+        Assert.True(saved);
+        Assert.False(unsavedAfterSave);
+        Assert.True(unsavedAfterUndo);
+        Assert.Empty(errors);
+    }
+
+    [PdfViewerFact]
+    public async Task A_save_in_progress_counts_as_unsaved()
+    {
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+
+        var (starting, snapshotTaken, finished, writing, saved, afterwards, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var saving = window.SaveAsync();
+            var justStarted = window.HasUnsavedChanges;
+            // The PdfViewer clears IsDirty as it takes its snapshot, and the file is written after that.
+            await TestWindows.WaitForAsync(() => !window.Viewer.IsDirty || saving.IsCompleted);
+            var (snapshot, done, unsavedMeanwhile) = (!window.Viewer.IsDirty, saving.IsCompleted, window.HasUnsavedChanges);
+            var saveWorked = await saving;
+            return (justStarted, snapshot, done, unsavedMeanwhile, saveWorked, window.HasUnsavedChanges, errorList);
+        });
+
+        Assert.True(starting);
+        Assert.True(snapshotTaken, "The PdfViewer's snapshot never cleared IsDirty, so this saw nothing of the write");
+        Assert.False(finished);
+        Assert.True(writing);
+        Assert.True(saved);
+        Assert.False(afterwards);
+        Assert.Empty(errors);
+    }
+
+    [PdfViewerFact]
+    public async Task Two_saves_at_once_leave_the_later_one_on_disk()
+    {
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+
+        var (firstSaved, secondSaved, unsaved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "First");
+            var firstSaving = window.SaveAsync();
+            await window.Viewer.AddStickyNoteAsync(0, 200, 200, "Second");
+            var secondSaving = window.SaveAsync();
+            return (await firstSaving, await secondSaving, window.HasUnsavedChanges, errorList);
+        });
+
+        Assert.True(firstSaved);
+        Assert.True(secondSaved);
+        Assert.False(unsaved);
+        Assert.Empty(errors);
+        var notes = PdfAnnotations.Read(File.ReadAllBytes(path), 0).Where(a => a.Subtype == AnnotationSubtype.Text).ToList();
+        Assert.Equal(2, notes.Count);
+        Assert.All(notes, n => Assert.Equal(Author, n.Author));
+    }
+
+    [PdfViewerFact]
+    public async Task An_undo_while_the_file_is_written_leaves_unsaved_changes()
+    {
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+
+        var (saved, unsaved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var saving = window.SaveAsync();
+            await TestWindows.WaitForAsync(() => !window.Viewer.IsDirty || saving.IsCompleted);
+            await window.Viewer.UndoAsync();
+            var saveWorked = await saving;
+            return (saveWorked, window.HasUnsavedChanges, errorList);
+        });
+
+        Assert.True(saved);
         Assert.True(unsaved);
+        Assert.Empty(errors);
     }
 
     [PdfViewerFact]
@@ -140,6 +225,33 @@ public sealed class DocumentWindowSaveTests : IDisposable
         Assert.True(unsaved);
         Assert.Contains("“fixture.pdf” couldn’t be saved", Assert.Single(errors));
         Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(path));
+    }
+
+    [PdfViewerFact]
+    public async Task A_failure_to_show_the_error_doesnt_escape_the_save()
+    {
+        // The window may have closed while the file was written, and then showing the error throws.
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+        var mode = File.GetUnixFileMode(_dir);
+
+        var (saved, unsaved) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.ReportError = (_, _) => throw new InvalidOperationException("The window has closed");
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            File.SetUnixFileMode(_dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            try
+            {
+                return (await window.SaveAsync(), window.HasUnsavedChanges);
+            }
+            finally
+            {
+                File.SetUnixFileMode(_dir, mode);
+            }
+        });
+
+        Assert.False(saved);
+        Assert.True(unsaved);
     }
 
     [PdfViewerFact]
