@@ -29,6 +29,12 @@ public partial class App : Application
     /// <summary>The preferences (spec §5), in <see cref="SettingsLocation.Folder"/>.</summary>
     public SettingsStore Settings { get; private set; } = null!;
 
+    /// <summary>File › Open Recent's list (spec §2.1).</summary>
+    public RecentDocuments Recent { get; private set; } = null!;
+
+    /// <summary>The document windows open.</summary>
+    internal IReadOnlyList<DocumentWindow> Windows => _windows;
+
     /// <summary>The name each save writes into new markups: the one set in Settings, else the macOS full name (spec §5).</summary>
     public string MarkupAuthor => Settings.MarkupAuthor ?? _fullName.Value;
 
@@ -36,6 +42,7 @@ public partial class App : Application
     {
         AvaloniaXamlLoader.Load(this);
         Settings = new SettingsStore(SettingsLocation.Folder());
+        Recent = new RecentDocuments(SettingsLocation.Folder());
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -56,7 +63,11 @@ public partial class App : Application
     public void OpenFile(string path)
     {
         if (!PdfFile.IsPdf(path))
+        {
+            Recent.Remove(path); // a recent file that's gone, or no longer a PDF
             return;
+        }
+        Recent.Add(path);
         var choice = WindowChoice.For(_windows.Select(w => w.FilePath).ToList(), path);
         switch (choice.Action)
         {

@@ -41,6 +41,9 @@ public partial class DocumentWindow : Window
             if (e.Property == PdfViewer.IsDirtyProperty)
                 UpdateTitle();
         };
+        ShowRecent(App.Current.Recent.Paths);
+        App.Current.Recent.Changed += OnRecentChanged;
+        Closed += (_, _) => App.Current.Recent.Changed -= OnRecentChanged;
     }
 
     /// <summary>The file shown, or null while the window is empty. Save As moves it to the new file.</summary>
@@ -78,6 +81,7 @@ public partial class DocumentWindow : Window
         _savesRunning++;
         UpdateTitle();
         Exception? failure = null;
+        string? movedTo = null;
         await _oneSaveAtATime.WaitAsync();
         try
         {
@@ -95,6 +99,8 @@ public partial class DocumentWindow : Window
             await Task.Run(() => AtomicFile.Write(target, MarkupAuthor.Stamp(pdf, previous, pages, author, password)));
             _path = Path.GetFullPath(target);
             _saveFailed = false;
+            if (_path != previous)
+                movedTo = _path;
         }
         catch (Exception error) // whatever stopped it, the user is told, and the changes stay unsaved
         {
@@ -108,7 +114,23 @@ public partial class DocumentWindow : Window
             UpdateTitle();
         }
         if (failure is null)
+        {
+            // Only once the file is written, and outside the try above: adding to Open Recent raises Changed, which runs
+            // every window's menu code, and nothing there may turn a save that worked into a failed one.
+            if (movedTo is not null)
+            {
+                try
+                {
+                    App.Current.Recent.Add(movedTo);
+                }
+                catch (Exception)
+                {
+                    // Open Recent is a convenience: the file is saved, and recent.json is written before Changed is
+                    // raised, so a menu that couldn't be refreshed now is not worth reporting as a failed save.
+                }
+            }
             return true;
+        }
         try
         {
             await ReportError($"“{Path.GetFileName(target)}” couldn’t be saved.", failure.Message);
@@ -120,6 +142,52 @@ public partial class DocumentWindow : Window
         }
         return false;
     }
+
+    /// <summary>Save As (⇧⌘S): writes the document to a file the user picks, and the window moves to it.</summary>
+    public async Task<bool> SaveAsAsync()
+    {
+        if (!Viewer.HasDocument)
+            return false;
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save As",
+            SuggestedFileName = Path.GetFileName(_path),
+            DefaultExtension = "pdf",
+            FileTypeChoices = [FilePickerFileTypes.Pdf],
+            ShowOverwritePrompt = true,
+        });
+        return file?.TryGetLocalPath() is { } target && await SaveToAsync(target);
+    }
+
+    /// <summary>Fills File › Open Recent with <paramref name="paths"/>, newest first, and Clear Menu.</summary>
+    internal void ShowRecent(IReadOnlyList<string> paths)
+    {
+        var menu = MenuItem("Open Recent").Menu!;
+        menu.Items.Clear();
+        foreach (var path in paths)
+            menu.Items.Add(new NativeMenuItem { Header = Path.GetFileName(path), Command = new ActionCommand(() => App.Current.OpenFile(path)) });
+        if (paths.Count > 0)
+            menu.Items.Add(new NativeMenuItemSeparator());
+        menu.Items.Add(new NativeMenuItem { Header = "Clear Menu", Command = new ActionCommand(App.Current.Recent.Clear, () => paths.Count > 0) });
+    }
+
+    /// <summary>The menu bar's item with <paramref name="header"/>, at any depth.</summary>
+    internal NativeMenuItem MenuItem(string header) =>
+        Find(NativeMenu.GetMenu(this)!, header) ?? throw new InvalidOperationException($"No menu item {header}");
+
+    private static NativeMenuItem? Find(NativeMenu menu, string header)
+    {
+        foreach (var item in menu.Items.OfType<NativeMenuItem>())
+        {
+            if (item.Header == header)
+                return item;
+            if (item.Menu is { } submenu && Find(submenu, header) is { } found)
+                return found;
+        }
+        return null;
+    }
+
+    private void OnRecentChanged(object? sender, EventArgs e) => ShowRecent(App.Current.Recent.Paths);
 
     private void UpdateTitle() => Title = DocumentTitle.For(_path, HasUnsavedChanges);
 
@@ -137,6 +205,8 @@ public partial class DocumentWindow : Window
     }
 
     private async void OnSave(object? sender, EventArgs e) => await SaveAsync();
+
+    private async void OnSaveAs(object? sender, EventArgs e) => await SaveAsAsync();
 
     private void OnClose(object? sender, EventArgs e) => Close();
 }
