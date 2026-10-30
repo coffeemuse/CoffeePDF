@@ -86,6 +86,21 @@ public partial class DocumentWindow : Window
     {
         if (!Viewer.HasDocument)
             return false;
+        // One window per document (spec §2.1): a window left on the same file would have its next save overwrite this one.
+        var full = Path.GetFullPath(target);
+        if (App.Current.Windows.Any(w => w != this && w.FilePath == full))
+        {
+            try
+            {
+                await ReportError($"“{Path.GetFileName(full)}” is open in another window.", "Close it there first, or save under another name.");
+            }
+            catch (Exception)
+            {
+                // The window may have closed meanwhile, and then there's nothing to show the error over. The save hasn't
+                // happened all the same, and its caller is told so.
+            }
+            return false;
+        }
         // Counted from here, not from the snapshot: the PdfViewer clears IsDirty at the snapshot, but until the file is
         // written the window still has changes the file doesn't.
         _savesRunning++;

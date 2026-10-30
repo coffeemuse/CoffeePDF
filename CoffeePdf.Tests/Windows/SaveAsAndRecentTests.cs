@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using CoffeePdf.Core.Pdf;
+using CoffeePdf.Dialogs;
 using CoffeePdf.Tests.Fixtures;
 using CoffeePdf.Windows;
 
@@ -38,6 +39,47 @@ public sealed class SaveAsAndRecentTests : IDisposable
         Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(copy), 0)).Author);
         Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(path));
         Assert.Equal(copy, recent[0]);
+    }
+
+    [PdfViewerFact]
+    public async Task Save_As_onto_a_file_another_window_shows_is_refused_and_leaves_that_file_alone()
+    {
+        string mine = Write("mine.pdf", MinimalPdf.Build()), theirs = Write("theirs.pdf", MinimalPdf.Build());
+
+        var (saved, errors, shown, unsaved) = await Headless.RunAsync(async () =>
+        {
+            App.Current.Settings.MarkupAuthor = TestWindows.Author;
+            App.Current.OpenFile(mine);
+            App.Current.OpenFile(theirs);
+            var window = App.Current.Windows.First(w => w.FilePath == mine);
+            var other = App.Current.Windows.First(w => w.FilePath == theirs);
+            var errors = new List<string>();
+            window.ReportError = (heading, detail) =>
+            {
+                errors.Add($"{heading} {detail}");
+                return Task.CompletedTask;
+            };
+            window.AskToSave = () => Task.FromResult(SaveChoice.DontSave);
+            try
+            {
+                await TestWindows.WaitForAsync(() => window.Viewer.HasDocument && other.Viewer.HasDocument);
+                await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+                var saved = await window.SaveToAsync(theirs);
+                return (saved, errors, window.FilePath, window.HasUnsavedChanges);
+            }
+            finally
+            {
+                await window.CloseWithPromptAsync();
+                other.Close();
+            }
+        });
+
+        Assert.False(saved);
+        Assert.Equal("“theirs.pdf” is open in another window. Close it there first, or save under another name.", Assert.Single(errors));
+        Assert.Equal(mine, shown);
+        Assert.True(unsaved);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(theirs));
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(mine));
     }
 
     [PdfViewerFact]

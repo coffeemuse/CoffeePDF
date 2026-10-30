@@ -143,6 +143,27 @@ public partial class App : Application
         return true;
     }
 
+    /// <summary>
+    /// Closes every window with unsaved changes, asking each in turn. The prompts take as long as the user does, and a
+    /// window can be edited meanwhile, so <paramref name="windows"/> is read again after each round, until none that is
+    /// still open has changes. Returns false at the first window that stays open.
+    /// </summary>
+    internal static async Task<bool> CloseAllEditedAsync(Func<IReadOnlyList<DocumentWindow>> windows)
+    {
+        // Windows this has closed are left out of the next round, so a window that still reports changes after the user
+        // chose Don’t Save can't be asked again.
+        var closed = new HashSet<DocumentWindow>();
+        while (true)
+        {
+            var edited = windows().Where(w => !closed.Contains(w) && w.HasUnsavedChanges).ToList();
+            if (edited.Count == 0)
+                return true;
+            if (!await CloseAllAsync(edited))
+                return false;
+            closed.UnionWith(edited);
+        }
+    }
+
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
         if (_quitConfirmed || !_windows.Any(w => w.HasUnsavedChanges))
@@ -153,8 +174,9 @@ public partial class App : Application
 
     private async Task QuitAsync(IClassicDesktopStyleApplicationLifetime? desktop)
     {
-        if (!await CloseAllAsync(_windows.Where(w => w.HasUnsavedChanges).ToList()))
+        if (!await CloseAllEditedAsync(() => _windows))
             return;
+        // Nothing awaits between the last check and the shutdown, so no window can be edited in between.
         _quitConfirmed = true;
         desktop?.Shutdown();
     }

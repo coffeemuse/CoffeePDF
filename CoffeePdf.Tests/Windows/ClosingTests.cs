@@ -36,6 +36,16 @@ public sealed class ClosingTests : IDisposable
         return (window, () => closed, () => asked);
     }
 
+    /// <summary>A window without changes, whose prompt answers <paramref name="answer"/>.</summary>
+    private static async Task<(DocumentWindow Window, Func<bool> Closed)> OpenAsync(string path, SaveChoice answer)
+    {
+        var (window, _) = await TestWindows.OpenAsync(path);
+        var closed = false;
+        window.Closed += (_, _) => closed = true;
+        window.AskToSave = () => Task.FromResult(answer);
+        return (window, () => closed);
+    }
+
     [PdfViewerFact]
     public async Task A_window_without_changes_closes_without_asking()
     {
@@ -212,6 +222,62 @@ public sealed class ClosingTests : IDisposable
 
         Assert.False(quit);
         Assert.True(firstClosed);
+        Assert.False(secondClosed);
+    }
+
+    [PdfViewerFact]
+    public async Task Quitting_asks_about_a_window_edited_while_an_earlier_prompt_was_up()
+    {
+        string first = Write("first.pdf"), second = Write("second.pdf");
+
+        var (quit, firstClosed, secondClosed, secondAsked) = await Headless.RunAsync(async () =>
+        {
+            var (a, aClosed, _) = await EditedAsync(first, SaveChoice.DontSave);
+            var (b, bClosed) = await OpenAsync(second, SaveChoice.DontSave);
+            var asked = 0;
+            b.AskToSave = () =>
+            {
+                asked++;
+                return Task.FromResult(SaveChoice.DontSave);
+            };
+            // b has no changes when the quit begins; the user edits it while a's prompt is showing.
+            a.AskToSave = async () =>
+            {
+                await b.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+                return SaveChoice.DontSave;
+            };
+            var result = await App.CloseAllEditedAsync(() => [a, b]);
+            return (result, aClosed(), bClosed(), asked);
+        });
+
+        Assert.True(quit);
+        Assert.True(firstClosed);
+        Assert.True(secondClosed);
+        Assert.Equal(1, secondAsked);
+    }
+
+    [PdfViewerFact]
+    public async Task Quitting_stops_at_a_Cancel_in_a_later_round()
+    {
+        string first = Write("first.pdf"), second = Write("second.pdf");
+
+        var (quit, secondClosed) = await Headless.RunAsync(async () =>
+        {
+            var (a, _, _) = await EditedAsync(first, SaveChoice.DontSave);
+            var (b, bClosed) = await OpenAsync(second, SaveChoice.Cancel);
+            a.AskToSave = async () =>
+            {
+                await b.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+                return SaveChoice.DontSave;
+            };
+            var result = await App.CloseAllEditedAsync(() => [a, b]);
+            var state = (result, bClosed());
+            b.AskToSave = () => Task.FromResult(SaveChoice.DontSave);
+            await b.CloseWithPromptAsync();
+            return state;
+        });
+
+        Assert.False(quit);
         Assert.False(secondClosed);
     }
 }
