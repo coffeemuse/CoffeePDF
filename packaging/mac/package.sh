@@ -166,10 +166,21 @@ print(value if isinstance(value, str) else "")' "$1" "$2" || true
     fi
     say "Notarised $2 ($id)"
   }
+  # Stapling and validating fetch the ticket from Apple over the network, which a CI runner sometimes loses part-way
+  # (NSURLErrorDomain -1005 and exit 68, on v0.0.1-spike4's first run), so they're tried three times.
+  staple() { # <file>
+    local try
+    for try in 1 2 3; do
+      if xcrun stapler staple "$1" && xcrun stapler validate "$1"; then return 0; fi
+      [ "$try" -lt 3 ] || break
+      warn "Stapling $(basename "$1") failed (try $try of 3), so it's tried again in $((try * 20)) seconds"
+      sleep $((try * 20))
+    done
+    die "stapling $(basename "$1") failed three times"
+  }
   ditto -c -k --keepParent "$app" "$work/app.zip"
   notarise "$work/app.zip" "the app"
-  xcrun stapler staple "$app"
-  xcrun stapler validate "$app"
+  staple "$app"
   spctl --assess --type execute --verbose=2 "$app"
 elif [ -n "$identity" ]; then
   # Before notarisation Gatekeeper may say "rejected": shown, not fatal.
@@ -196,8 +207,7 @@ codesign --force "$timestamp" --sign "$signer" ${keychain[@]+"${keychain[@]}"} "
 codesign --verify --strict --verbose=2 "$dmg"
 if [ "$notarise" = true ]; then
   notarise "$dmg" "the disk image"
-  xcrun stapler staple "$dmg"
-  xcrun stapler validate "$dmg"
+  staple "$dmg"
   spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
 fi
 
