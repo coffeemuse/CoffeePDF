@@ -193,6 +193,10 @@ jobs:
             echo "::error::APPLE_DEVELOPER_ID_P12 holds no Developer ID Application identity for APPLE_TEAM_ID"
             exit 1
           fi
+          # The identity carries the owner's name, which the logs then hide wherever it appears (codesign prints it).
+          holder=${identity#Developer ID Application: }
+          echo "::add-mask::$identity"
+          echo "::add-mask::${holder% (*}"
           echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
           echo "SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 

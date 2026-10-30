@@ -1,0 +1,48 @@
+#!/bin/sh
+# Keeps the owner's personal details out of CoffeePDF's history (CLAUDE.md). Git runs it once a clone sets
+# `git config core.hooksPath .githooks`.
+#
+# - No PDF is committed. A PDF CoffeePDF saved carries its markup author, which defaults to the macOS full name.
+# - No staged file may contain the account's full name, account name or home folder: as text, or in the UTF-16 and
+#   hex forms a PDF keeps its strings in. They're read here, at commit time, so they're written nowhere, and a
+#   rejection never prints them.
+set -eu
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+
+pdfs=$(printf '%s\n' "$staged" | grep -i '\.pdf$' || true)
+if [ -n "$pdfs" ]; then
+  echo "pre-commit: PDFs aren't committed to CoffeePDF, since a saved one carries its markup author:" >&2
+  printf '%s\n' "$pdfs" | sed 's/^/  /' >&2
+  exit 1
+fi
+
+full=$( (/usr/bin/id -F || getent passwd "$(id -un)" | cut -d: -f5 | cut -d, -f1) 2>/dev/null || true)
+account=$(id -un 2>/dev/null || true)
+
+check='
+import re, sys
+data = sys.stdin.buffer.read()
+full, account, home = sys.argv[1:4]
+def forms(text):
+    for variant in {text, text.lower(), text.upper()}:
+        for encoding in ("utf-8", "utf-16-be", "utf-16-le"):
+            raw = variant.encode(encoding)
+            yield raw
+            yield raw.hex().encode()
+            yield raw.hex().upper().encode()
+found = [what for what, value in (("the full name", full), ("the home folder", home)) if len(value) > 1 and any(f in data for f in forms(value))]
+if len(account) > 1 and re.search(rb"(?i)(?<![A-Za-z0-9])" + re.escape(account.encode()) + rb"(?![A-Za-z0-9])", data):
+    found.append("the account name")
+if found:
+    print(" and ".join(found))
+    sys.exit(1)
+'
+
+printf '%s\n' "$staged" | while IFS= read -r file; do
+  if ! what=$(git show ":$file" | python3 -I -c "$check" "$full" "$account" "$HOME"); then
+    echo "pre-commit: $file contains $what (not shown). Take it out, and stage the file again." >&2
+    exit 1
+  fi
+done || exit 1

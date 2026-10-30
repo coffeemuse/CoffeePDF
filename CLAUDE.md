@@ -29,6 +29,10 @@ packaging/mac/package.sh 1.2.3                               # CoffeePDF.app and
 ## Rules
 
 - **The licence key** is never committed, logged or printed. `AvaloniaLicense.props` reads it from the environment.
+- **Personal details stay out of the repository**, including PDFs' markup authors, which default to the macOS full name.
+  - Run `git config core.hooksPath .githooks` once per clone. The hook rejects any PDF, and any change that holds the
+    account's full name, account name or home folder.
+  - Tests save with the made-up author `Test Reviewer`, and anything recording a name describes it instead of quoting it.
 - **`CoffeePdf.Core` references no Avalonia assembly,** and `ArchitectureTests` fails if it does.
   - Logic goes in the core, with its tests in `CoffeePdf.Core.Tests`.
   - `CoffeePdf` is the Avalonia app. Its tests (`CoffeePdf.Tests`) run Avalonia headless.

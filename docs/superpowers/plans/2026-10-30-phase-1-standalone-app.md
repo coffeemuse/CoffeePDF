@@ -48,8 +48,19 @@ The PdfViewer's own saving is off, so nothing can save around that path.
   - Tests never touch the real settings folder. `Headless` points `COFFEEPDF_SETTINGS_DIR` at a temporary folder before
     Avalonia starts.
   - Core tests pass a folder of their own.
-- **Personal details:** no test, probe or log prints the account's full name or user name, so tests assert on it
-  without writing it out. Test names are made up, such as `Test Reviewer`.
+- **Personal details stay out of the repository (owner, 2026-10-30).** This phase writes the Markup author into PDFs,
+  and its default is the owner's macOS full name, so:
+  - **Tests save with the made-up author `Test Reviewer`** (`TestWindows.Author`). `Headless` sets it in the run's own
+    settings before the app starts, so no test falls back to the full name. Other made-up names, such as
+    `Zoë Q. Reviewer`, are fine.
+  - **No test, probe, log, commit message or document quotes** the account's full name, account name or home folder.
+    Anything that has to mention one describes it, such as "the account's full name". Tests assert on
+    `UserNames.FullName()` without printing it.
+  - **No PDF is committed.** Fixtures are built in code, and a PDF from a test run, a probe (`probe-out/`) or the
+    owner's checks stays out.
+  - **The pre-commit hook enforces this.** `.githooks/pre-commit`, active through `git config core.hooksPath .githooks`,
+    rejects a staged PDF, and a staged change holding those names in any encoding. Never bypass it with `--no-verify`.
+    If it rejects a commit, take the detail out; don't work around it.
 - **Tests wait for conditions, never for fixed times.**
 - **Tests that need the PdfViewer** use `[PdfViewerFact]` and `[Trait("Category", "PdfViewer")]`. A test that creates a
   `DocumentWindow` needs it, since the window creates a PdfViewer. Tests of other windows use `[Fact]`, and so run
@@ -1925,8 +1936,11 @@ In `CoffeePdf.Tests/Headless.cs`, set the settings folder before the session sta
 ```csharp
     private static readonly Lazy<HeadlessUnitTestSession> Session = new(() =>
     {
-        // The app's settings and Open Recent go to a folder of the run's own, never the real one.
-        Environment.SetEnvironmentVariable(SettingsLocation.OverrideVariable, Directory.CreateTempSubdirectory("coffeepdf-settings-").FullName);
+        // The app's settings and Open Recent go to a folder of the run's own, never the real one. Its Markup author is
+        // set before the app starts, so no save in a test falls back to the account's full name (CLAUDE.md).
+        var settings = Directory.CreateTempSubdirectory("coffeepdf-settings-").FullName;
+        new SettingsStore(settings).MarkupAuthor = Windows.TestWindows.Author;
+        Environment.SetEnvironmentVariable(SettingsLocation.OverrideVariable, settings);
         return HeadlessUnitTestSession.StartNew(typeof(Headless));
     });
 ```
@@ -3448,7 +3462,11 @@ In the spec's §16, add a short "Phase 1 (built YYYY-MM-DD)" paragraph after the
 - [ ] **Step 5: List the owner's checks in the pull request**
 
 Each pull request that changes the look or the Mac's integration lists its checks for the owner (spec §8). Run them on
-the Mac with the package from Step 3:
+the Mac with the package from Step 3.
+
+The PDFs you mark up in these checks carry your name, so keep them outside the repository, on the Desktop for example.
+When a result goes into the spec, describe the author shown ("my full name", "the name set in Settings") rather than
+quoting it.
 
 1. **The author:**
    - Mark up a PDF with a highlight, a note, a text box, a drawing, a shape and a stamp. Save with ⌘S, and open it
