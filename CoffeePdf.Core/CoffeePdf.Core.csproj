@@ -12,9 +12,13 @@
     <PackageReference Include="bblanchon.PDFium.Linux" GeneratePathProperty="true" />
   </ItemGroup>
   <PropertyGroup>
-    <!-- The copy's platform: the app's publish names one (packaging/mac/package.sh), a plain build or test run is this machine's. -->
-    <CoffeePdfiumRid>$(RuntimeIdentifier)</CoffeePdfiumRid>
-    <CoffeePdfiumRid Condition="'$(CoffeePdfiumRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</CoffeePdfiumRid>
+    <!--
+      The platform of the copy. The core builds without a RuntimeIdentifier of its own (a project reference doesn't pass
+      the app's on), so the copy follows CoffeePdfiumRid: this machine's portable RID (linux-x64 on a distro-built SDK
+      that names itself ubuntu.24.04-x64) for builds and tests, or whatever sets it, as package.sh does for the app it
+      ships.
+    -->
+    <CoffeePdfiumRid Condition="'$(CoffeePdfiumRid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</CoffeePdfiumRid>
   </PropertyGroup>
   <PropertyGroup Condition="$(CoffeePdfiumRid.StartsWith('osx-'))">
     <CoffeePdfiumSource>$(Pkgbblanchon_PDFium_macOS)/runtimes/$(CoffeePdfiumRid)/native/libpdfium.dylib</CoffeePdfiumSource>

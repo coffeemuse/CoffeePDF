@@ -92,10 +92,12 @@ fi
 
 # --- The app --------------------------------------------------------------------------------------------------------
 
+# CoffeePdfiumRid names the platform of CoffeePDF's own PDFium (CoffeePdf.Core.csproj). The core never sees --runtime,
+# and without this it would take the building Mac's, which on an Intel Mac isn't the app's.
 say "Publishing CoffeePDF $version for osx-arm64"
 dotnet publish "$repo/CoffeePdf/CoffeePdf.csproj" \
   --configuration Release --runtime osx-arm64 --self-contained true --output "$work/publish" \
-  -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false \
+  -p:CoffeePdfiumRid=osx-arm64 -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false \
   -p:Version="$numeric" -p:InformationalVersion="$version" -p:IncludeSourceRevisionInInformationalVersion=false \
   -nologo
 
@@ -104,11 +106,11 @@ for file in "$work/publish"/*; do
   file -b "$file" | grep -q '^Mach-O' || die "the publish left $(basename "$file"), which isn't native code, beside the binary"
 done
 [ -f "$work/publish/CoffeePDF" ] || die "the publish made no CoffeePDF binary"
-# CoffeePDF's own copy of PDFium (CoffeePdf.Core.csproj), beside the PdfViewer's libpdfium. It follows the building Mac's
-# architecture, so an Intel Mac would ship the wrong one.
+# CoffeePDF's own copy of PDFium (CoffeePdf.Core.csproj), beside the PdfViewer's libpdfium: the publish above names its
+# platform, and this stops a package that lost it or got the wrong one.
 [ -f "$work/publish/libcoffeepdfium.dylib" ] || die "the publish made no libcoffeepdfium.dylib, CoffeePDF's own copy of PDFium"
 lipo "$work/publish/libcoffeepdfium.dylib" -verify_arch arm64 2>/dev/null ||
-  die "libcoffeepdfium.dylib isn't built for Apple silicon (package on an Apple silicon Mac)"
+  die "libcoffeepdfium.dylib isn't built for Apple silicon, so CoffeePdfiumRid didn't reach CoffeePdf.Core"
 
 say "Building $app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
