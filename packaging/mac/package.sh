@@ -18,10 +18,10 @@
 #   OUT_DIR         where the app and the disk image go; packaging/mac/out by default.
 #
 # The steps, as the Healdan Helper's: a self-contained, single-file .NET publish for osx-arm64 with no .pdb, since any
-# file in Contents/MacOS that isn't native code breaks the bundle's signature; the bundle; signing inside-out (each
-# native library, the binary, then the bundle), with the hardened runtime and a timestamp when there's an identity;
-# codesign's strict check; notarising and stapling; the disk image, with a link to Applications, signed (and
-# notarised) too. Any failure stops it.
+# file in Contents/MacOS that isn't native code breaks the bundle's signature; the bundle, with the icon make-icon.sh
+# made; signing inside-out (each native library, the binary, then the bundle), with the hardened runtime and a
+# timestamp when there's an identity; codesign's strict check; notarising and stapling; the disk image, with a link to
+# Applications, signed (and notarised) too. Any failure stops it.
 set -euo pipefail
 
 say() { printf '%s\n' "$*"; }
@@ -39,6 +39,7 @@ done
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
+[ -f "$here/CoffeePDF.icns" ] || die "packaging/mac/CoffeePDF.icns is missing: make-icon.sh makes it"
 out=${OUT_DIR:-"$here/out"}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -117,11 +118,12 @@ for library in "$app/Contents/MacOS"/*.dylib; do
   fi
 done
 chmod 755 "$app/Contents/MacOS"/*
+cp "$here/CoffeePDF.icns" "$app/Contents/Resources/"
 sed -e "s/@VERSION@/$numeric/g" "$here/Info.plist.in" > "$app/Contents/Info.plist"
 ! grep -q '@[A-Z_]*@' "$app/Contents/Info.plist" || die "Info.plist.in has a placeholder package.sh doesn't fill"
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 printf 'APPL????' > "$app/Contents/PkgInfo"
-chmod 644 "$app/Contents/Info.plist" "$app/Contents/PkgInfo"
+chmod 644 "$app/Contents/Info.plist" "$app/Contents/PkgInfo" "$app/Contents/Resources/CoffeePDF.icns"
 xattr -cr "$app" 2>/dev/null || true # Finder info or a resource fork would make codesign refuse it
 
 # --- Signing, inside out --------------------------------------------------------------------------------------------

@@ -30,7 +30,8 @@ moves to the control's own when a newer PdfViewer adds the feature (the spec's Â
 ## Backlog
 
 - OCR and comparing versions, which may belong on Healdan's server.
-- Linux, after the Helper's Linux phase. Windows later.
+- Linux, after the Helper's Linux phase. Windows later. Both make their icons from the artwork in
+  `packaging/icon/CoffeePDF.png`, as `packaging/mac/make-icon.sh` does the Mac's.
 
 ## Open decisions for the owner
 
