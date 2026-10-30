@@ -6,12 +6,15 @@ public sealed record AnnotationFacts(AnnotationSubtype Subtype, string? Name, st
 /// <summary>Reads annotations through PDFium, for the tests and for anything that needs more than the PdfViewer shows.</summary>
 public static class PdfAnnotations
 {
-    /// <summary>The annotations on page <paramref name="pageIndex"/> (0-based) of <paramref name="pdf"/>, in order.</summary>
-    public static IReadOnlyList<AnnotationFacts> Read(byte[] pdf, int pageIndex)
+    /// <summary>
+    /// The annotations on page <paramref name="pageIndex"/> (0-based) of <paramref name="pdf"/>, in order. An encrypted
+    /// PDF needs its <paramref name="password"/>.
+    /// </summary>
+    public static IReadOnlyList<AnnotationFacts> Read(byte[] pdf, int pageIndex, string? password = null)
     {
         lock (Pdfium.Gate)
         {
-            using var document = PdfiumDocument.Open(pdf, password: null)
+            using var document = PdfiumDocument.Open(pdf, password)
                 ?? throw new InvalidDataException("PDFium can't open these bytes as a PDF");
             var facts = new List<AnnotationFacts>();
             document.ForEachAnnotation(pageIndex, annotation => facts.Add(new AnnotationFacts(

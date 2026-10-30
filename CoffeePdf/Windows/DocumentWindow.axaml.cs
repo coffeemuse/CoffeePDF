@@ -27,6 +27,7 @@ public partial class DocumentWindow : Window
     private bool _saveFailed;      // the last save failed, though saving to memory cleared IsDirty
     private bool _closeConfirmed;  // asked, or nothing to ask: the next close goes through
     private bool _asking;          // a close is being decided, from the prompt through the save it asked for
+    private string? _typedPassword; // what was typed into the PdfViewer's password prompt for this file
 
     public DocumentWindow()
     {
@@ -46,6 +47,20 @@ public partial class DocumentWindow : Window
         {
             if (e.Property == PdfViewer.IsDirtyProperty)
                 UpdateTitle();
+        };
+        // The PdfViewer's own password prompt opens an encrypted PDF but leaves Viewer.Password unset, and a save needs
+        // the password to write the author into the encrypted bytes (the owner's check 12b). So the window keeps what's
+        // typed there. PART_PasswordTextBox is the prompt's box in the PdfViewer 12.0.1 template; a test drives it, and
+        // fails if a newer template renames it.
+        Viewer.TemplateApplied += (_, e) =>
+        {
+            if (e.NameScope.Find<TextBox>("PART_PasswordTextBox") is not { } box)
+                return;
+            box.PropertyChanged += (_, change) =>
+            {
+                if (change.Property == TextBox.TextProperty && !string.IsNullOrEmpty(box.Text))
+                    _typedPassword = box.Text;
+            };
         };
         ShowRecent(App.Current.Recent.Paths);
         App.Current.Recent.Changed += OnRecentChanged;
@@ -70,6 +85,7 @@ public partial class DocumentWindow : Window
         _path = Path.GetFullPath(path);
         _markedPages.Clear();
         _saved = _editedSinceSave = _saveFailed = false;
+        _typedPassword = null;
         Viewer.Source = _path;
         UpdateTitle();
         MenuItem("Undo").IsEnabled = MenuItem("Redo").IsEnabled = false;
@@ -120,7 +136,7 @@ public partial class DocumentWindow : Window
             var previous = _path;
             int[] pages = [.. _markedPages];
             var author = App.Current.MarkupAuthor;
-            var password = Viewer.Password;
+            var password = Viewer.Password ?? _typedPassword;
             await Task.Run(() => AtomicFile.Write(target, MarkupAuthor.Stamp(pdf, previous, pages, author, password)));
             _path = Path.GetFullPath(target);
             _saveFailed = false;

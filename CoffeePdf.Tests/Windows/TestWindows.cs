@@ -14,6 +14,17 @@ internal static class TestWindows
     /// </summary>
     public static async Task<(DocumentWindow Window, List<string> Errors)> OpenAsync(string path)
     {
+        var (window, errors) = Show();
+        await Viewers.ShowAndLoadAsync(window.Viewer, () => window.Load(path));
+        return (window, errors);
+    }
+
+    /// <summary>
+    /// Shows an empty DocumentWindow, collecting the errors it would show, with the Markup author set to
+    /// <see cref="Author"/>.
+    /// </summary>
+    public static (DocumentWindow Window, List<string> Errors) Show()
+    {
         App.Current.Settings.MarkupAuthor = Author;
         var errors = new List<string>();
         var window = new DocumentWindow();
@@ -23,7 +34,6 @@ internal static class TestWindows
             return Task.CompletedTask;
         };
         window.Show();
-        await Viewers.ShowAndLoadAsync(window.Viewer, () => window.Load(path));
         return (window, errors);
     }
 

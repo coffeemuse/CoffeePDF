@@ -1,3 +1,6 @@
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using CoffeePdf.Core.Pdf;
 using CoffeePdf.Tests.Fixtures;
 
@@ -82,6 +85,37 @@ public sealed class DocumentWindowSaveTests : IDisposable
         Assert.Equal(2, notes.Count);
         Assert.All(notes, n => Assert.Equal(Author, n.Author));
     }
+
+    [PdfViewerFact]
+    public async Task A_pdf_unlocked_in_the_PdfViewers_prompt_saves_its_notes_with_the_author()
+    {
+        // The owner's check 12b: the prompt opens the file but leaves Viewer.Password unset, so the window keeps what's
+        // typed there. This drives the PdfViewer 12.0.1 prompt by its parts, and fails if a newer template renames them.
+        var path = Write("locked.pdf", EncryptedPdf.Build());
+
+        var (saved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = TestWindows.Show();
+            window.Load(path);
+            TextBox? box = null;
+            await TestWindows.WaitForAsync(() => (box = Visible<TextBox>(window, b => b.Name == "PART_PasswordTextBox")) is not null);
+            box!.Text = EncryptedPdf.UserPassword;
+            Visible<Button>(window, b => Equals(b.Content, "Unlock"))!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await TestWindows.WaitForAsync(() => window.Viewer.HasDocument);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            return (await window.SaveAsync(), errorList);
+        });
+
+        Assert.True(saved);
+        Assert.Empty(errors);
+        var bytes = File.ReadAllBytes(path);
+        var note = Assert.Single(PdfAnnotations.Read(bytes, 0, EncryptedPdf.UserPassword));
+        Assert.Equal(Author, note.Author);
+        Assert.Throws<InvalidDataException>(() => PdfAnnotations.Read(bytes, 0));
+    }
+
+    private static T? Visible<T>(Window window, Func<T, bool> match) where T : Control =>
+        window.GetVisualDescendants().OfType<T>().FirstOrDefault(c => c.IsEffectivelyVisible && match(c));
 
     [PdfViewerFact]
     public async Task The_title_says_Edited_until_the_save()

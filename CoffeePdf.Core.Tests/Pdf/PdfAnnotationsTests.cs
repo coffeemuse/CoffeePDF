@@ -1,5 +1,6 @@
 using CoffeePdf.Core.Pdf;
 using CoffeePdf.Core.Tests.Fixtures;
+using CoffeePdf.Tests.Fixtures;
 
 namespace CoffeePdf.Core.Tests.Pdf;
 
@@ -29,6 +30,15 @@ public sealed class PdfAnnotationsTests
     [Fact]
     public void Bytes_that_arent_a_pdf_are_refused() =>
         Assert.Throws<InvalidDataException>(() => PdfAnnotations.Read("%PDF-1.7 not really"u8.ToArray(), 0));
+
+    [Fact]
+    public void An_encrypted_pdf_is_read_with_its_password_and_refused_without_it()
+    {
+        var pdf = EncryptedPdf.Build();
+
+        Assert.Empty(PdfAnnotations.Read(pdf, 0, EncryptedPdf.UserPassword));
+        Assert.Throws<InvalidDataException>(() => PdfAnnotations.Read(pdf, 0));
+    }
 
     [Fact]
     public void Only_text_markup_shapes_ink_stamps_and_the_like_are_markup()
