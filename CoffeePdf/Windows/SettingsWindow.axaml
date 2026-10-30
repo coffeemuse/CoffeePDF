@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CoffeePdf.Windows.SettingsWindow"
+        Title="Settings" Width="480" SizeToContent="Height" CanResize="False">
+  <StackPanel Margin="20" Spacing="20">
+    <StackPanel Spacing="6">
+      <TextBlock Text="Markup author" FontWeight="SemiBold" />
+      <TextBox x:Name="AuthorBox" />
+      <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                 Text="The name written into each markup you add. Leave it empty to use your macOS full name." />
+    </StackPanel>
+    <StackPanel x:Name="DefaultAppSection" Spacing="6">
+      <TextBlock Text="Default PDF app" FontWeight="SemiBold" />
+      <TextBlock x:Name="DefaultAppStatus" TextWrapping="Wrap" />
+      <Button x:Name="MakeDefaultButton" Content="Make CoffeePDF the Default PDF App" Click="OnMakeDefault" />
+    </StackPanel>
+  </StackPanel>
+</Window>

@@ -8,6 +8,8 @@
     <AssemblyName>CoffeePDF</AssemblyName>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <!-- Platform/DefaultPdfApp.cs passes pointers to Core Foundation. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <Import Project="../AvaloniaLicense.props" />
   <ItemGroup>

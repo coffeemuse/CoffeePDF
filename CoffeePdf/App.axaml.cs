@@ -1,12 +1,14 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Files;
 using CoffeePdf.Core.Settings;
+using CoffeePdf.Platform;
 using CoffeePdf.Windows;
 
 namespace CoffeePdf;
@@ -22,6 +24,8 @@ public partial class App : Application
     private readonly List<DocumentWindow> _windows = [];
 
     private readonly Lazy<string> _fullName = new(UserNames.FullName);
+
+    private SettingsWindow? _settingsWindow;
 
     private bool _quitConfirmed; // the windows with changes have been asked: the shutdown now goes through
 
@@ -45,6 +49,13 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
         Settings = new SettingsStore(SettingsLocation.Folder());
         Recent = new RecentDocuments(SettingsLocation.Folder());
+
+        // The app menu: Avalonia keeps macOS's own About, Hide and Quit beside it.
+        var settings = new NativeMenuItem { Header = "Settings…", Gesture = new KeyGesture(Key.OemComma, KeyModifiers.Meta) };
+        settings.Click += (_, _) => ShowSettings();
+        var appMenu = new NativeMenu();
+        appMenu.Items.Add(settings);
+        NativeMenu.SetMenu(this, appMenu);
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -60,6 +71,18 @@ public partial class App : Application
             DispatcherTimer.RunOnce(OpenEmptyWindowIfNone, EmptyWindowDelay);
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Settings… (⌘,): one window, brought forward if it's open.</summary>
+    public void ShowSettings()
+    {
+        if (_settingsWindow is null)
+        {
+            _settingsWindow = new SettingsWindow(Settings, _fullName.Value, new MacDefaultPdfApp());
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Show();
+        }
+        _settingsWindow.Activate();
     }
 
     /// <summary>Shows <paramref name="path"/>: in its window if one shows it, else in an empty window, else in a new one.</summary>
