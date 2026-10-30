@@ -9,17 +9,82 @@
       <NativeMenuItem Header="File">
         <NativeMenu>
           <NativeMenuItem Header="Open…" Gesture="Meta+O" Click="OnOpen" />
-          <NativeMenuItem Header="Save" Gesture="Meta+S" Click="OnSave" />
+          <NativeMenuItem Header="Open Recent">
+            <NativeMenu />
+          </NativeMenuItem>
           <NativeMenuItemSeparator />
           <NativeMenuItem Header="Close" Gesture="Meta+W" Click="OnClose" />
+          <NativeMenuItem Header="Save" Gesture="Meta+S" Click="OnSave" />
+          <NativeMenuItem Header="Save As…" Gesture="Meta+Shift+S" Click="OnSaveAs" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Print…" Gesture="Meta+P" Click="OnPrint" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Edit">
+        <!-- Copy (⌘C) and Select All (⌘A) are the PdfViewer's own shortcuts, so they work in its text fields too. -->
+        <NativeMenu>
+          <NativeMenuItem Header="Undo" Gesture="Meta+Z" Click="OnUndo" IsEnabled="False" />
+          <NativeMenuItem Header="Redo" Gesture="Meta+Shift+Z" Click="OnRedo" IsEnabled="False" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Find Next" Gesture="Meta+G" Click="OnFindNext" />
+          <NativeMenuItem Header="Find Previous" Gesture="Meta+Shift+G" Click="OnFindPrevious" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="View">
+        <NativeMenu>
+          <NativeMenuItem Header="Actual Size" Gesture="Meta+D0" Click="OnActualSize" />
+          <NativeMenuItem Header="Zoom to Fit" Gesture="Meta+D9" Click="OnZoomToFit" />
+          <NativeMenuItem Header="Zoom In" Gesture="Meta+OemPlus" Click="OnZoomIn" />
+          <NativeMenuItem Header="Zoom Out" Gesture="Meta+OemMinus" Click="OnZoomOut" />
+          <NativeMenuItem Header="Fit Width" Click="OnFitWidth" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Single Page" Click="OnViewMode" CommandParameter="SinglePage" />
+          <NativeMenuItem Header="Continuous" Click="OnViewMode" CommandParameter="Continuous" />
+          <NativeMenuItem Header="Two Pages" Click="OnViewMode" CommandParameter="TwoPages" />
+          <NativeMenuItem Header="Two Pages Continuous" Click="OnViewMode" CommandParameter="TwoPagesContinuous" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Hide Sidebar" Gesture="Alt+Meta+D1" Click="OnSidebar" CommandParameter="None" />
+          <NativeMenuItem Header="Thumbnails" Gesture="Alt+Meta+D2" Click="OnSidebar" CommandParameter="Thumbnails" />
+          <NativeMenuItem Header="Table of Contents" Gesture="Alt+Meta+D3" Click="OnSidebar" CommandParameter="TableOfContents" />
+          <NativeMenuItem Header="Bookmarks" Gesture="Alt+Meta+D4" Click="OnSidebar" CommandParameter="Bookmarks" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Go">
+        <NativeMenu>
+          <NativeMenuItem Header="Previous Page" Gesture="Alt+Meta+Up" Click="OnPreviousPage" />
+          <NativeMenuItem Header="Next Page" Gesture="Alt+Meta+Down" Click="OnNextPage" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Toggle Bookmark" Gesture="Meta+D" Click="OnToggleBookmark" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Tools">
+        <NativeMenu>
+          <NativeMenuItem Header="Annotate">
+            <NativeMenu>
+              <NativeMenuItem Header="Select Text" Click="OnTool" CommandParameter="None" />
+              <NativeMenuItemSeparator />
+              <NativeMenuItem Header="Highlight" Gesture="Ctrl+Meta+H" Click="OnTool" CommandParameter="Highlight" />
+              <NativeMenuItem Header="Underline" Gesture="Ctrl+Meta+U" Click="OnTool" CommandParameter="Underline" />
+              <NativeMenuItem Header="Strikethrough" Gesture="Ctrl+Meta+S" Click="OnTool" CommandParameter="Strikeout" />
+              <NativeMenuItem Header="Squiggly" Click="OnTool" CommandParameter="Squiggly" />
+              <NativeMenuItem Header="Text" Gesture="Ctrl+Meta+T" Click="OnTool" CommandParameter="Text" />
+              <NativeMenuItem Header="Note" Gesture="Ctrl+Meta+N" Click="OnTool" CommandParameter="Note" />
+              <NativeMenuItem Header="Draw" Click="OnTool" CommandParameter="Draw" />
+              <NativeMenuItem Header="Shape" Click="OnTool" CommandParameter="Shape" />
+              <NativeMenuItem Header="Stamp" Click="OnTool" CommandParameter="Stamp" />
+            </NativeMenu>
+          </NativeMenuItem>
         </NativeMenu>
       </NativeMenuItem>
     </NativeMenu>
   </NativeMenu.Menu>
-  <!-- AutoSave stays off (spec §6.4): each edit would otherwise become a save. -->
+  <!-- Every save goes through DocumentWindow.SaveToAsync, which writes the markup author (spec §16 Decision 1), so the
+       PdfViewer's own saving is off. AutoSave stays off too (spec §6.4): each edit would otherwise become a save.
+       The Redact tool is hidden, since true redaction is v2's (spec §2.2). -->
   <pdf:PdfViewer x:Name="Viewer"
                  ViewMode="Continuous"
                  SidebarMode="Thumbnails"
-                 AllowDocumentSaving="True"
-                 AutoSave="False" />
+                 AllowDocumentSaving="False"
+                 AutoSave="False"
+                 IsRedactToolVisible="False" />
 </Window>

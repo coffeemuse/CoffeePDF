@@ -3,5 +3,53 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>CoffeePdf.Core</RootNamespace>
+    <!-- Pdf/Pdfium.cs passes pointers to PDFium. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- PDFium for the core's own calls, on macOS and Linux. GeneratePathProperty gives the Pkg… properties below. -->
+    <PackageReference Include="bblanchon.PDFium.macOS" GeneratePathProperty="true" />
+    <PackageReference Include="bblanchon.PDFium.Linux" GeneratePathProperty="true" />
+  </ItemGroup>
+  <PropertyGroup>
+    <!--
+      The platform of the copy. The core builds without a RuntimeIdentifier of its own (a project reference doesn't pass
+      the app's on), so the copy follows CoffeePdfiumRid: this machine's portable RID (linux-x64 on a distro-built SDK
+      that names itself ubuntu.24.04-x64) for builds and tests, or whatever sets it, as package.sh does for the app it
+      ships.
+    -->
+    <CoffeePdfiumRid Condition="'$(CoffeePdfiumRid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</CoffeePdfiumRid>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(CoffeePdfiumRid.StartsWith('osx-'))">
+    <CoffeePdfiumSource>$(Pkgbblanchon_PDFium_macOS)/runtimes/$(CoffeePdfiumRid)/native/libpdfium.dylib</CoffeePdfiumSource>
+    <CoffeePdfiumName>libcoffeepdfium.dylib</CoffeePdfiumName>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(CoffeePdfiumRid.StartsWith('linux-'))">
+    <CoffeePdfiumSource>$(Pkgbblanchon_PDFium_Linux)/runtimes/$(CoffeePdfiumRid)/native/libpdfium.so</CoffeePdfiumSource>
+    <CoffeePdfiumName>libcoffeepdfium.so</CoffeePdfiumName>
+  </PropertyGroup>
+  <!--
+    CoffeePDF's own copy of PDFium (spec §16 Decision 1): the package's library, copied under another name, so the process
+    loads it as a second image beside the PdfViewer's libpdfium, with global state of its own. Sharing one copy crashed and
+    hung: the PdfViewer calls FPDF_DestroyLibrary when its last document closes, which broke the core's next call, and
+    PDFium isn't safe for two threads (the core's save, the PdfViewer's rendering) in one image. Pdfium.cs binds to
+    "coffeepdfium". The file lands in the output of this project and of every project that references it, and in their
+    publish folders. ExcludeFromSingleFile keeps the app's single file from bundling it, so it stays a real file beside the
+    binary, where the loader looks and package.sh signs it.
+
+    The copy goes through obj/ first, so the item has a path of its own. Listing the package's file again under another
+    name doesn't work: a single-file publish removes the files it bundles from the publish list by path, which takes the
+    package's libpdfium and, with it, this copy of the same path.
+  -->
+  <Target Name="CoffeePdfiumCopy" BeforeTargets="AssignTargetPaths" Condition="'$(CoffeePdfiumName)' != ''">
+    <PropertyGroup>
+      <CoffeePdfiumCopy>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', '$(CoffeePdfiumName)'))</CoffeePdfiumCopy>
+    </PropertyGroup>
+    <Copy SourceFiles="$(CoffeePdfiumSource)" DestinationFiles="$(CoffeePdfiumCopy)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <FileWrites Include="$(CoffeePdfiumCopy)" />
+      <None Include="$(CoffeePdfiumCopy)" Link="$(CoffeePdfiumName)"
+            CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Visible="false" />
+    </ItemGroup>
+  </Target>
 </Project>

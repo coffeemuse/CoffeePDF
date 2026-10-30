@@ -30,6 +30,10 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 ## Rules
 
 - **The licence key** is never committed, logged or printed. `AvaloniaLicense.props` reads it from the environment.
+- **Personal details stay out of the repository**, including PDFs' markup authors, which default to the macOS full name.
+  - Run `git config core.hooksPath .githooks` once per clone. The hook rejects any PDF, and any change that holds the
+    account's full name, account name or home folder.
+  - Tests save with the made-up author `Test Reviewer`, and anything recording a name describes it instead of quoting it.
 - **`CoffeePdf.Core` references no Avalonia assembly,** and `ArchitectureTests` fails if it does.
   - Logic goes in the core, with its tests in `CoffeePdf.Core.Tests`.
   - `CoffeePdf` is the Avalonia app. Its tests (`CoffeePdf.Tests`) run Avalonia headless.
@@ -38,5 +42,11 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 - **Tests wait for conditions,** never for fixed times.
 - **`TreatWarningsAsErrors` is on.**
 - **The PdfViewer's `AutoSave` stays off** (spec §6.4).
+- **Every save goes through `DocumentWindow.SaveToAsync`:** the PdfViewer saves to memory, `MarkupAuthor` writes the
+  author, and `AtomicFile` replaces the file. The PdfViewer's `AllowDocumentSaving` stays off (spec §16 Decision 1).
+- **CoffeePDF has its own copy of PDFium** (`libcoffeepdfium`, bound as `"coffeepdfium"`), separate from the
+  PdfViewer's. The core's calls take `Pdfium.Gate`, and nothing calls `FPDF_DestroyLibrary`. `package.sh` names its
+  architecture.
+- **Tests never touch the real settings:** `Headless` sets `COFFEEPDF_SETTINGS_DIR`, and core tests pass a folder.
 - **Packaging:** only native code may sit in the bundle's `Contents/MacOS`, which `package.sh` checks.
 - **Pushes go through the owner.** Never push, tag or open a pull request without the owner's go-ahead.

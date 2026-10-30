@@ -1,5 +1,6 @@
 using System.Text;
 
+// Compiled by both test projects (CoffeePdf.Tests links it), so its namespace stays the app tests' own.
 namespace CoffeePdf.Tests.Fixtures;
 
 /// <summary>

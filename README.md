@@ -3,7 +3,7 @@
 An everyday PDF app for macOS, in the spirit of Preview, that works directly with documents stored and versioned in
 [Healdan](https://github.com/Healdan-Project/healdan), through the Healdan Helper.
 
-**Status:** pre-release, in Phase 0 (the foundation spike). See [the roadmap](docs/ROADMAP.md) and
+**Status:** pre-release, in Phase 1 (the standalone app). See [the roadmap](docs/ROADMAP.md) and
 [the v1 design](docs/superpowers/specs/2026-10-29-coffeepdf-v1-design.md).
 
 ## Building
@@ -19,6 +19,9 @@ dotnet test CoffeePdf.sln
 dotnet run --project CoffeePdf -- path/to/file.pdf
 packaging/mac/package.sh 0.0.1   # CoffeePDF.app and its .dmg, on a Mac
 ```
+
+Run `git config core.hooksPath .githooks` once per clone, so the hooks (which need `python3`) keep personal details
+out of the history.
 
 Signed, notarised releases come from `v*` tags in CI. [Releasing](docs/RELEASING.md) covers their secrets.
 

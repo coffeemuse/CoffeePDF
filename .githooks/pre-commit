@@ -1,0 +1,19 @@
+#!/bin/sh
+# Keeps the owner's personal details out of CoffeePDF's history (CLAUDE.md, spec §16). Git runs it once a clone sets
+# `git config core.hooksPath .githooks`.
+#
+# - No PDF is committed, by its name or by its content. A PDF CoffeePDF saved carries its markup author, which defaults
+#   to the macOS full name.
+# - No staged file, or file name, may hold the account's full name, account name or home folder: as text, or in the
+#   UTF-16, Latin-1 and hex forms a PDF keeps its strings in. They're read at commit time, so they're written nowhere,
+#   and a refusal never prints them.
+#
+# The check itself is check-personal-details.py, which the commit-msg hook shares. It fails closed: a staged file that
+# can't be read, or a check that can't finish, refuses the commit.
+set -eu
+
+if ! python3 -I -c '' > /dev/null 2>&1; then
+  echo "pre-commit: the personal-details check needs python3, and there isn't a working one on the PATH. Install it, then commit again." >&2
+  exit 1
+fi
+exec python3 -I "$(dirname "$0")/check-personal-details.py" staged
