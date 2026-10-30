@@ -212,11 +212,21 @@ public sealed class DocumentWindowSaveTests : IDisposable
         {
             var (window, errorList) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var held = TestWindows.HoldWrites(window);
             var saving = window.SaveAsync();
             var justStarted = window.HasUnsavedChanges;
-            // The PdfViewer clears IsDirty as it takes its snapshot, and the file is written after that.
-            await TestWindows.WaitForAsync(() => !window.Viewer.IsDirty || saving.IsCompleted);
-            var (snapshot, done, unsavedMeanwhile) = (!window.Viewer.IsDirty, saving.IsCompleted, window.HasUnsavedChanges);
+            // The PdfViewer clears IsDirty as it takes its snapshot, and the file is written after that, here once released.
+            (bool, bool, bool) meanwhile;
+            try
+            {
+                await TestWindows.WaitForAsync(() => held.Reached);
+                meanwhile = (!window.Viewer.IsDirty, saving.IsCompleted, window.HasUnsavedChanges);
+            }
+            finally
+            {
+                held.Release();
+            }
+            var (snapshot, done, unsavedMeanwhile) = meanwhile;
             var saveWorked = await saving;
             return (justStarted, snapshot, done, unsavedMeanwhile, saveWorked, window.HasUnsavedChanges, errorList);
         });
@@ -263,9 +273,17 @@ public sealed class DocumentWindowSaveTests : IDisposable
         {
             var (window, errorList) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var held = TestWindows.HoldWrites(window);
             var saving = window.SaveAsync();
-            await TestWindows.WaitForAsync(() => !window.Viewer.IsDirty || saving.IsCompleted);
-            await window.Viewer.UndoAsync();
+            try
+            {
+                await TestWindows.WaitForAsync(() => held.Reached);
+                await window.Viewer.UndoAsync();
+            }
+            finally
+            {
+                held.Release();
+            }
             var saveWorked = await saving;
             return (saveWorked, window.HasUnsavedChanges, errorList);
         });

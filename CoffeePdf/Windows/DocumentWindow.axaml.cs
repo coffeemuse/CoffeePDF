@@ -79,6 +79,9 @@ public partial class DocumentWindow : Window
     /// <summary>Asks Save, Don’t Save or Cancel. The tests replace it.</summary>
     internal Func<Task<SaveChoice>> AskToSave { get; set; }
 
+    /// <summary>Replaces the file with a save's bytes, on a pool thread. The tests replace it to hold a save mid-write.</summary>
+    internal Action<string, byte[]> WriteFile { get; set; } = (target, pdf) => AtomicFile.Write(target, pdf);
+
     /// <summary>Shows <paramref name="path"/>.</summary>
     public void Load(string path)
     {
@@ -137,7 +140,8 @@ public partial class DocumentWindow : Window
             int[] pages = [.. _markedPages];
             var author = App.Current.MarkupAuthor;
             var password = Viewer.Password ?? _typedPassword;
-            await Task.Run(() => AtomicFile.Write(target, MarkupAuthor.Stamp(pdf, previous, pages, author, password)));
+            var write = WriteFile;
+            await Task.Run(() => write(target, MarkupAuthor.Stamp(pdf, previous, pages, author, password)));
             _path = Path.GetFullPath(target);
             _saveFailed = false;
             if (_path != previous)

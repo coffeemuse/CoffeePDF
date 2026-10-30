@@ -1,3 +1,4 @@
+using CoffeePdf.Core.Files;
 using CoffeePdf.Windows;
 
 namespace CoffeePdf.Tests.Windows;
@@ -37,6 +38,12 @@ internal static class TestWindows
         return (window, errors);
     }
 
+    /// <summary>
+    /// Holds <paramref name="window"/>'s saves just before they write the file, until <see cref="HeldWrites.Release"/>,
+    /// so a test sees a save in progress however fast the write is.
+    /// </summary>
+    public static HeldWrites HoldWrites(DocumentWindow window) => new(window);
+
     /// <summary>Waits until <paramref name="condition"/> holds, letting the UI thread run meanwhile, for at most 10 seconds.</summary>
     public static async Task WaitForAsync(Func<bool> condition)
     {
@@ -50,4 +57,24 @@ internal static class TestWindows
             await Task.Delay(1);
         }
     }
+}
+
+/// <summary>A window's saves, held before they write the file (<see cref="TestWindows.HoldWrites"/>).</summary>
+internal sealed class HeldWrites
+{
+    private readonly ManualResetEventSlim _released = new();
+    private volatile bool _reached;
+
+    public HeldWrites(DocumentWindow window) => window.WriteFile = (target, pdf) =>
+    {
+        _reached = true;
+        _released.Wait();
+        AtomicFile.Write(target, pdf);
+    };
+
+    /// <summary>Whether a save has reached the write, and is held there.</summary>
+    public bool Reached => _reached;
+
+    /// <summary>Lets the held saves, and any later ones, write the file.</summary>
+    public void Release() => _released.Set();
 }
