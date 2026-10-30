@@ -19,9 +19,10 @@ public static class MarkupAuthor
     /// window get the author again at every save, since the PdfViewer's own copy never has it.
     /// </para>
     /// <para>
-    /// Returns <paramref name="pdf"/> itself when there's nothing to write: no author, no pages, nothing new, or a
-    /// PDF that PDFium can't open, such as an encrypted one without its <paramref name="password"/>. A save never
-    /// fails for want of an author.
+    /// Returns <paramref name="pdf"/> itself when there's nothing to write: no author, no pages, nothing new, a PDF
+    /// that PDFium can't open, such as an encrypted one without its <paramref name="password"/>, or a
+    /// <paramref name="previousFile"/> that exists but PDFium can't open, since then nothing can be told apart. A save
+    /// never fails for want of an author.
     /// </para>
     /// </remarks>
     public static byte[] Stamp(byte[] pdf, string? previousFile, IReadOnlyCollection<int> pages, string author, string? password = null)

@@ -101,4 +101,23 @@ public sealed class MarkupAuthorTests : IDisposable
 
         Assert.Same(pdf, MarkupAuthor.Stamp(pdf, null, [0], Author));
     }
+
+    [Fact]
+    public void A_previous_file_PDFium_cant_open_stamps_nothing()
+    {
+        // Nothing can be told apart in a file that can't be read, so the save writes no author rather than guess.
+        var previous = Previous("%PDF-1.7 not really"u8.ToArray());
+        var pdf = AnnotatedPdf.Build(AnnotatedPdf.Note("av-1", null));
+
+        Assert.Same(pdf, MarkupAuthor.Stamp(pdf, previous, [0], Author));
+    }
+
+    [Fact]
+    public void A_previous_file_that_isnt_there_yet_counts_as_empty()
+    {
+        var previous = Path.Combine(_dir, "never-written.pdf");
+        var pdf = AnnotatedPdf.Build(AnnotatedPdf.Note("av-1", null));
+
+        Assert.Equal(Author, Assert.Single(PdfAnnotations.Read(MarkupAuthor.Stamp(pdf, previous, [0], Author), 0)).Author);
+    }
 }
