@@ -9,8 +9,9 @@
 #                   as soon as a window creates it (the probe `What_the_viewer_does_without_a_licence`, spec §16),
 #                   so it shows no PDF. With SIGN_IDENTITY set the script stops: a signed build is a release candidate.
 #   SIGN_IDENTITY   the Developer ID Application identity to sign with, as `security find-identity` names it. Unset,
-#                   the app gets only an ad-hoc signature, which Gatekeeper refuses on any other Mac. Set but not in
-#                   the keychains, the script stops: it never falls back to ad-hoc when a signature was asked for.
+#                   the app gets only an ad-hoc signature, without the hardened runtime, so it runs here but Gatekeeper
+#                   refuses it on any other Mac. Set but not in the keychains, the script stops: it never falls back to
+#                   ad-hoc when a signature was asked for.
 #   SIGN_KEYCHAIN   the keychain holding it (CI's temporary one); otherwise the usual search list.
 #   NOTARY_KEY      the App Store Connect API key's .p8 file, with NOTARY_KEY_ID and NOTARY_ISSUER: with all three and
 #                   a signing identity, the app and the disk image are notarised and stapled.
@@ -18,8 +19,9 @@
 #
 # The steps, as the Healdan Helper's: a self-contained, single-file .NET publish for osx-arm64 with no .pdb, since any
 # file in Contents/MacOS that isn't native code breaks the bundle's signature; the bundle; signing inside-out (each
-# native library, the binary, then the bundle) with the hardened runtime and a timestamp; codesign's strict check;
-# notarising and stapling; the disk image, with a link to Applications, signed (and notarised) too. Any failure stops it.
+# native library, the binary, then the bundle), with the hardened runtime and a timestamp when there's an identity;
+# codesign's strict check; notarising and stapling; the disk image, with a link to Applications, signed (and
+# notarised) too. Any failure stops it.
 set -euo pipefail
 
 say() { printf '%s\n' "$*"; }
@@ -66,11 +68,15 @@ fi
 if [ -n "$identity" ]; then
   signer=$identity
   timestamp=--timestamp
+  runtime=(--options runtime)
   say "Signing with $identity"
 else
   signer=-
   timestamp=--timestamp=none
-  warn "NOT SIGNED with a Developer ID: SIGN_IDENTITY is unset. The app gets an ad-hoc signature only, so Gatekeeper refuses it on any other Mac, and it isn't notarised."
+  # The hardened runtime's library validation refuses an ad-hoc build's own libraries, so with it the app can't
+  # launch (spec §16 row 7, Decision 4). Notarisation, which needs the hardened runtime, needs an identity anyway.
+  runtime=()
+  warn "NOT SIGNED with a Developer ID: SIGN_IDENTITY is unset. The app gets an ad-hoc signature only, without the hardened runtime, so it runs on this Mac, but Gatekeeper refuses it on any other, and it isn't notarised."
 fi
 notarise=false
 if [ -n "${NOTARY_KEY:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER:-}" ]; then
@@ -121,7 +127,7 @@ xattr -cr "$app" 2>/dev/null || true # Finder info or a resource fork would make
 # --- Signing, inside out --------------------------------------------------------------------------------------------
 
 sign() {
-  codesign --force --options runtime "$timestamp" --sign "$signer" ${keychain[@]+"${keychain[@]}"} "$@"
+  codesign --force ${runtime[@]+"${runtime[@]}"} "$timestamp" --sign "$signer" ${keychain[@]+"${keychain[@]}"} "$@"
 }
 for library in "$app/Contents/MacOS"/*.dylib; do
   [ -e "$library" ] || continue

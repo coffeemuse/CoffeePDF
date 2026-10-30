@@ -20,6 +20,8 @@ dotnet run --project CoffeePdf -- path/to/file.pdf
 packaging/mac/package.sh 0.0.1   # CoffeePDF.app and its .dmg, on a Mac
 ```
 
+Signed, notarised releases come from `v*` tags in CI. [Releasing](docs/RELEASING.md) covers their secrets.
+
 ## Licence
 
 Proprietary for now; see [LICENSE](LICENSE).
