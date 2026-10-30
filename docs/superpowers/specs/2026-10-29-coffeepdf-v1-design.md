@@ -497,10 +497,23 @@ what was planned. This is what the build showed, and what it changed.
   CoffeePDF's own calls no longer share it.
 - **A note for the owner.** A save replaces the file through a rename, so Finder tags and "where from" on a PDF are not
   kept after CoffeePDF saves it, as with the PdfViewer's own save before.
-- **Left for the owner's checks, on the Mac, with the package above.** They are listed in the pull request (§8). They are
-  the ones a headless test can't show: the Markup author as Preview shows it, Settings' layout (§14 item 6), the default
-  PDF app, the close and quit prompts, the app with no window, Open Recent, Save As, printing, and each shortcut acting
-  once.
+- **The owner's checks on the Mac (2026-10-30): all 13 passed, four after fixes.** They are the ones a headless test
+  can't show, listed in the pull request (§8): the Markup author as Preview shows it, Settings (and its layout, §14
+  item 6), the default PDF app, the close and quit prompts, the app with no window, Open Recent, Save As, printing, each
+  shortcut acting once, forms, and encrypted PDFs. The builds were signed with the Developer ID and the hardened runtime,
+  not notarised: `0.1.0-phase1.2` for the first round, and `0.1.0-phase1.4` for the last recheck.
+  - Passed first time: 1 (the author, in Preview), 3 to 9, 11, and 12a (a PDF with only an owner password that allows
+    comments: the markups carry the author, and the protection is kept).
+  - 2, Settings: the CoffeePDF menu had no About, since Avalonia drops its About Avalonia once the app sets a menu of its
+    own. About CoffeePDF now opens macOS's own About panel, which reads Info.plist.
+  - 10, the shortcuts: each acted once, but ⌘Z in the search field undid the last markup, since the Edit menu's Undo
+    takes the key first. Undo and Redo now go to a focused text field.
+  - 13, ⌘W in Settings did nothing, since that window has no menu of its own to carry Close. A key binding closes it.
+  - 12b, a PDF with an open password: the markups saved without an author, for the two reasons above. Observed in the
+    recheck's file: still encrypted, with CoffeePDF's update appended, and a note with text, an empty note, a
+    highlight and a drawing, each with the account's full name as its author.
+  - With these fixes, the tests with the key: the core's 64 passed, and the app's 60 passed and 1 skipped (the keyless
+    probe).
 
 ### The owner's to-do list, to fill the pending rows
 
