@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Pdf.Core;
 using Avalonia.Controls.Pdf.Services;
+using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using CoffeePdf.Tests.Fixtures;
 using CoffeePdf.Windows;
 
@@ -152,6 +154,30 @@ public sealed class MenuTests : IDisposable
         });
 
         Assert.Equal(new[] { (false, false), (true, false), (false, true) }, states);
+    }
+
+    [PdfViewerFact]
+    public async Task Undo_in_a_focused_text_field_undoes_the_typing_not_the_markup()
+    {
+        // The owner's check 10: Edit › Undo's ⌘Z reached the menu first and undid a note while the search box had focus.
+        var path = Fixture();
+
+        var (typed, afterUndo, markupStillUndoable) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var search = window.Viewer.GetVisualDescendants().OfType<TextBox>().First(t => t.IsEffectivelyVisible);
+            search.Focus();
+            window.KeyTextInput("fox");
+            await TestWindows.WaitForAsync(() => search.Text == "fox");
+            var before = search.Text;
+            window.OnUndo(window.MenuItem("Undo"), EventArgs.Empty);
+            return (before, search.Text, window.Viewer.CanUndo);
+        });
+
+        Assert.Equal("fox", typed);
+        Assert.NotEqual("fox", afterUndo);
+        Assert.True(markupStillUndoable);
     }
 
     [PdfViewerFact]

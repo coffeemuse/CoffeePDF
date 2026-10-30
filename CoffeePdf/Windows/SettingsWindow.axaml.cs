@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using CoffeePdf.Core.Settings;
 using CoffeePdf.Platform;
@@ -13,7 +14,13 @@ public partial class SettingsWindow : Window
 {
     private readonly IDefaultPdfApp? _defaultApp;
 
-    public SettingsWindow() => InitializeComponent();
+    public SettingsWindow()
+    {
+        InitializeComponent();
+        // ⌘W closes Settings, as it closes any Mac window. This window has no menu of its own to carry Close (the owner's
+        // check 13).
+        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.W, KeyModifiers.Meta), Command = new ActionCommand(Close) });
+    }
 
     internal SettingsWindow(SettingsStore store, string fullName, IDefaultPdfApp defaultApp) : this()
     {

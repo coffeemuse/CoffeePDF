@@ -1,3 +1,5 @@
+using Avalonia.Headless;
+using Avalonia.Input;
 using CoffeePdf.Core.Settings;
 using CoffeePdf.Platform;
 using CoffeePdf.Windows;
@@ -98,5 +100,22 @@ public sealed class SettingsWindowTests : IDisposable
             Task.FromResult(new SettingsWindow(new SettingsStore(_dir), "Default Name", new FakeDefaultApp(false, false)).DefaultAppSection.IsVisible));
 
         Assert.False(shown);
+    }
+
+    [Fact]
+    public async Task Command_W_closes_Settings()
+    {
+        // The owner's check 13: Settings has no menu of its own, so ⌘W did nothing.
+        var closed = await Headless.RunAsync(() =>
+        {
+            var window = new SettingsWindow(new SettingsStore(_dir), "Default Name", new FakeDefaultApp(true, true));
+            var wasClosed = false;
+            window.Closed += (_, _) => wasClosed = true;
+            window.Show();
+            window.KeyPressQwerty(PhysicalKey.W, RawInputModifiers.Meta);
+            return Task.FromResult(wasClosed);
+        });
+
+        Assert.True(closed);
     }
 }

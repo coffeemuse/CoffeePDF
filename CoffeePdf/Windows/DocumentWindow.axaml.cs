@@ -309,9 +309,26 @@ public partial class DocumentWindow : Window
     internal void OnTool(object? sender, EventArgs e) => Viewer.ActiveTool = Parameter<PdfViewerTool>(sender);
     internal void OnViewMode(object? sender, EventArgs e) => Viewer.ViewMode = Parameter<PdfViewMode>(sender);
     internal void OnSidebar(object? sender, EventArgs e) => Viewer.SidebarMode = Parameter<SidebarMode>(sender);
-    internal void OnUndo(object? sender, EventArgs e) => Viewer.Undo();
+    // ⌘Z and ⇧⌘Z are Edit's key equivalents, so the menu gets them before a focused text field, such as the toolbar's
+    // search box, would: they act on that field first, and on the PdfViewer's markups otherwise (the owner's check 10).
+    internal void OnUndo(object? sender, EventArgs e)
+    {
+        if (FocusedTextBox() is { } box)
+            box.Undo();
+        else
+            Viewer.Undo();
+    }
+
+    internal void OnRedo(object? sender, EventArgs e)
+    {
+        if (FocusedTextBox() is { } box)
+            box.Redo();
+        else
+            Viewer.Redo();
+    }
+
+    private TextBox? FocusedTextBox() => FocusManager?.GetFocusedElement() as TextBox;
     internal void OnZoomIn(object? sender, EventArgs e) => Viewer.ZoomIn();
-    private void OnRedo(object? sender, EventArgs e) => Viewer.Redo();
     private void OnFindNext(object? sender, EventArgs e) => Viewer.FindNext();
     private void OnFindPrevious(object? sender, EventArgs e) => Viewer.FindPrevious();
     private void OnActualSize(object? sender, EventArgs e) => Viewer.ResetZoom();
