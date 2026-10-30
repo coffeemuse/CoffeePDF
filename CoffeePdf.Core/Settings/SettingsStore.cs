@@ -18,14 +18,14 @@ public sealed class SettingsStore(string folder)
     /// <summary>Healdan support (§5), off by default. Phase 1 only keeps it, and Phase 2 acts on it.</summary>
     public bool HealdanEnabled
     {
-        get => Load()["healdan"]?["enabled"] is JsonValue value && value.TryGetValue(out bool enabled) && enabled;
+        get => Load()["healdan"] is JsonObject healdan && healdan["enabled"] is JsonValue value && value.TryGetValue(out bool enabled) && enabled;
         set => Change(root => Section(root, "healdan")["enabled"] = value);
     }
 
     /// <summary>The Markup author the user set (§5), or null to follow the macOS full name. Setting it blank clears it.</summary>
     public string? MarkupAuthor
     {
-        get => Load()["markup"]?["author"] is JsonValue value && value.TryGetValue(out string? author) && !string.IsNullOrWhiteSpace(author)
+        get => Load()["markup"] is JsonObject markup && markup["author"] is JsonValue value && value.TryGetValue(out string? author) && !string.IsNullOrWhiteSpace(author)
             ? author
             : null;
         set => Change(root =>

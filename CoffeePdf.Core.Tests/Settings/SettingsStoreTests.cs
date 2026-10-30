@@ -70,4 +70,21 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.True(new SettingsStore(_dir).HealdanEnabled);
     }
+
+    [Fact]
+    public void Sections_of_the_wrong_shape_give_the_defaults_and_the_next_change_still_works()
+    {
+        var store = new SettingsStore(_dir);
+        File.WriteAllText(store.FilePath, """{ "healdan": 5, "markup": "text" }""");
+
+        Assert.False(store.HealdanEnabled);
+        Assert.Null(store.MarkupAuthor);
+
+        store.HealdanEnabled = true;
+        store.MarkupAuthor = "Test Reviewer";
+
+        var again = new SettingsStore(_dir);
+        Assert.True(again.HealdanEnabled);
+        Assert.Equal("Test Reviewer", again.MarkupAuthor);
+    }
 }
