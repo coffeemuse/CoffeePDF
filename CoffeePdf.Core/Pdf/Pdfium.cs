@@ -4,18 +4,20 @@ using System.Text;
 namespace CoffeePdf.Core.Pdf;
 
 /// <summary>
-/// The PDFium functions CoffeePDF calls itself, for what the PdfViewer doesn't do (spec §4.3, §16 Decision 1). They
-/// bind to the <c>libpdfium</c> the PdfViewer ships (bblanchon.PDFium 157), so the process holds one copy.
+/// The PDFium functions CoffeePDF calls itself, for what the PdfViewer doesn't do (spec §4.3, §16 Decision 1). They bind
+/// to CoffeePDF's own copy of PDFium, <c>libcoffeepdfium</c>: the bblanchon.PDFium 157 binary the PdfViewer ships, copied
+/// under another name at build time (CoffeePdf.Core.csproj).
 /// </summary>
 /// <remarks>
-/// PDFium isn't thread-safe. <see cref="Gate"/> serialises CoffeePDF's own calls. The PdfViewer serialises its own per
-/// document, and nothing joins the two, so CoffeePDF keeps its calls few: a save's, on the pages it needs. PDFium
-/// ignores <c>FPDF_InitLibrary</c> once it's initialised, and in the app the PdfViewer initialises it first, with its
-/// own configuration. Nothing here calls <c>FPDF_DestroyLibrary</c>, which would pull PDFium from under the PdfViewer.
+/// The process loads the two as separate images, so neither's global state reaches the other's. The PdfViewer calls
+/// <c>FPDF_DestroyLibrary</c> when its last document closes, which would have broken this class's next call if they
+/// shared one copy, and its rendering never runs inside this one. PDFium isn't thread-safe, so <see cref="Gate"/>
+/// serialises CoffeePDF's own calls (a save's on a pool thread, the tests' reads). <c>FPDF_InitLibrary</c> initialises
+/// this copy once, and nothing calls <c>FPDF_DestroyLibrary</c>: only CoffeePDF uses it, for the life of the process.
 /// </remarks>
 internal static unsafe partial class Pdfium
 {
-    private const string Library = "pdfium";
+    private const string Library = "coffeepdfium";
 
     /// <summary><c>FPDF_INCREMENTAL</c>: a save that appends to the original bytes, so a signature over them holds.</summary>
     private const uint Incremental = 1;
@@ -24,7 +26,7 @@ internal static unsafe partial class Pdfium
 
     private static bool s_initialised;
 
-    /// <summary>Initialises PDFium, which does nothing if the PdfViewer has. Call under <see cref="Gate"/>.</summary>
+    /// <summary>Initialises CoffeePDF's copy of PDFium, once. Call under <see cref="Gate"/>.</summary>
     public static void Initialise()
     {
         if (s_initialised)

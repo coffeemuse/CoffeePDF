@@ -104,6 +104,11 @@ for file in "$work/publish"/*; do
   file -b "$file" | grep -q '^Mach-O' || die "the publish left $(basename "$file"), which isn't native code, beside the binary"
 done
 [ -f "$work/publish/CoffeePDF" ] || die "the publish made no CoffeePDF binary"
+# CoffeePDF's own copy of PDFium (CoffeePdf.Core.csproj), beside the PdfViewer's libpdfium. It follows the building Mac's
+# architecture, so an Intel Mac would ship the wrong one.
+[ -f "$work/publish/libcoffeepdfium.dylib" ] || die "the publish made no libcoffeepdfium.dylib, CoffeePDF's own copy of PDFium"
+lipo "$work/publish/libcoffeepdfium.dylib" -verify_arch arm64 2>/dev/null ||
+  die "libcoffeepdfium.dylib isn't built for Apple silicon (package on an Apple silicon Mac)"
 
 say "Building $app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
