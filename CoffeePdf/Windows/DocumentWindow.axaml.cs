@@ -24,11 +24,14 @@ public partial class DocumentWindow : Window
     private bool _saved;           // the PdfViewer has taken a snapshot since the file loaded
     private bool _editedSinceSave; // an undo or redo since that snapshot, which the PdfViewer's IsDirty misses
     private bool _saveFailed;      // the last save failed, though saving to memory cleared IsDirty
+    private bool _closeConfirmed;  // asked, or nothing to ask: the next close goes through
+    private bool _asking;          // a close is being decided, from the prompt through the save it asked for
 
     public DocumentWindow()
     {
         InitializeComponent();
         ReportError = (heading, detail) => MessageDialog.ShowErrorAsync(this, heading, detail);
+        AskToSave = () => MessageDialog.AskToSaveAsync(this, Path.GetFileName(_path) ?? "CoffeePDF");
         Viewer.AnnotationAdded += (_, e) => _markedPages.Add(e.Annotation.PageIndex);
         Viewer.UndoRedoStateChanged += (_, _) =>
         {
@@ -54,6 +57,9 @@ public partial class DocumentWindow : Window
 
     /// <summary>Shows a save's failure, with a heading and the reason. The tests replace it.</summary>
     internal Func<string, string, Task> ReportError { get; set; }
+
+    /// <summary>Asks Save, Don’t Save or Cancel. The tests replace it.</summary>
+    internal Func<Task<SaveChoice>> AskToSave { get; set; }
 
     /// <summary>Shows <paramref name="path"/>.</summary>
     public void Load(string path)
@@ -157,6 +163,45 @@ public partial class DocumentWindow : Window
             ShowOverwritePrompt = true,
         });
         return file?.TryGetLocalPath() is { } target && await SaveToAsync(target);
+    }
+
+    /// <summary>
+    /// Closes the window, first asking to save its changes, if it has any (spec §6.8). Returns false if it stayed
+    /// open: the user cancelled, or the save failed.
+    /// </summary>
+    public async Task<bool> CloseWithPromptAsync()
+    {
+        // Held through the save the prompt asked for, which counts as unsaved changes: a second ⌘W meanwhile would
+        // otherwise ask the same question again over the save.
+        if (_asking)
+            return false;
+        _asking = true;
+        try
+        {
+            if (HasUnsavedChanges)
+            {
+                var choice = await AskToSave();
+                if (choice == SaveChoice.Cancel || (choice == SaveChoice.Save && !await SaveAsync()))
+                    return false;
+            }
+        }
+        finally
+        {
+            _asking = false;
+        }
+        _closeConfirmed = true;
+        Close();
+        return true;
+    }
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        if (_closeConfirmed || !HasUnsavedChanges)
+            return;
+        // The red button, ⌘W, or the app quitting: ask first, then close for real.
+        e.Cancel = true;
+        _ = CloseWithPromptAsync();
     }
 
     /// <summary>Fills File › Open Recent with <paramref name="paths"/>, newest first, and Clear Menu.</summary>

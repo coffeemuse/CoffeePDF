@@ -26,4 +26,27 @@ public sealed class MessageDialogTests
         Assert.Equal("Save", answer);
         Assert.True(rightmostIsDefault);
     }
+
+    [Fact]
+    public async Task Save_changes_offers_Dont_Save_on_the_left_and_Save_as_the_default()
+    {
+        var (left, right, answer) = await Headless.RunAsync(async () =>
+        {
+            var owner = new Window();
+            owner.Show();
+            var asking = MessageDialog.AskToSaveAsync(owner, "Report.pdf");
+            var dialog = (MessageDialog)owner.OwnedWindows.Single();
+            var labels = (
+                dialog.LeftButtons.Children.Cast<Button>().Select(b => (string)b.Content!).ToList(),
+                dialog.RightButtons.Children.Cast<Button>().Select(b => (string)b.Content!).ToList());
+            ((Button)dialog.LeftButtons.Children[0]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var choice = await asking;
+            owner.Close();
+            return (labels.Item1, labels.Item2, choice);
+        });
+
+        Assert.Equal(new[] { "Don’t Save" }, left);
+        Assert.Equal(new[] { "Cancel", "Save" }, right);
+        Assert.Equal(SaveChoice.DontSave, answer);
+    }
 }

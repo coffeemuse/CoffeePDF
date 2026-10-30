@@ -30,6 +30,18 @@ public partial class MessageDialog : Window
     /// <summary>Tells the user something went wrong, with an OK button.</summary>
     public static Task ShowErrorAsync(Window owner, string heading, string detail) => ShowAsync(owner, heading, detail, ["OK"]);
 
+    /// <summary>The usual Save changes? prompt (spec §6.8): Don’t Save on the left, Cancel and Save on the right.</summary>
+    public static async Task<SaveChoice> AskToSaveAsync(Window owner, string fileName) =>
+        await ShowAsync(owner,
+            $"Do you want to save the changes made to the document “{fileName}”?",
+            "Your changes will be lost if you don’t save them.",
+            ["Cancel", "Save"], ["Don’t Save"]) switch
+        {
+            "Save" => SaveChoice.Save,
+            "Don’t Save" => SaveChoice.DontSave,
+            _ => SaveChoice.Cancel,
+        };
+
     private Button AddButton(string label)
     {
         var button = new Button { Content = label, MinWidth = 88, IsCancel = label == "Cancel" };

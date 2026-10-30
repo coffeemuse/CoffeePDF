@@ -23,6 +23,8 @@ public partial class App : Application
 
     private readonly Lazy<string> _fullName = new(UserNames.FullName);
 
+    private bool _quitConfirmed; // the windows with changes have been asked: the shutdown now goes through
+
     /// <summary>The running app, from anywhere in it.</summary>
     public static new App Current => (App)Application.Current!;
 
@@ -52,6 +54,7 @@ public partial class App : Application
             // Subscribed before anything awaits, or the file Finder launched the app with is missed.
             if (this.TryGetFeature<IActivatableLifetime>() is { } activatable)
                 activatable.Activated += OnActivated;
+            desktop.ShutdownRequested += OnShutdownRequested;
             foreach (var arg in desktop.Args ?? [])
                 OpenFile(arg);
             DispatcherTimer.RunOnce(OpenEmptyWindowIfNone, EmptyWindowDelay);
@@ -88,11 +91,49 @@ public partial class App : Application
 
     private void OnActivated(object? sender, ActivatedEventArgs e)
     {
+        if (e.Kind == ActivationKind.Reopen)
+        {
+            // The Dock icon, clicked with no window open: an empty window, where ⌘O and Open Recent work.
+            if (_windows.Count == 0)
+                NewWindow().Show();
+            return;
+        }
         if (e is not FileActivatedEventArgs { Kind: ActivationKind.File } opened)
             return;
         foreach (var file in opened.Files)
             if (file.TryGetLocalPath() is { } path)
                 OpenFile(path);
+    }
+
+    /// <summary>
+    /// Closes <paramref name="windows"/> one at a time, each asking to save its changes (spec §6.8). Stops at the first
+    /// that stays open, and returns whether all closed.
+    /// </summary>
+    internal static async Task<bool> CloseAllAsync(IReadOnlyList<DocumentWindow> windows)
+    {
+        foreach (var window in windows)
+        {
+            window.Activate();
+            if (!await window.CloseWithPromptAsync())
+                return false;
+        }
+        return true;
+    }
+
+    private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
+    {
+        if (_quitConfirmed || !_windows.Any(w => w.HasUnsavedChanges))
+            return;
+        e.Cancel = true;
+        _ = QuitAsync(sender as IClassicDesktopStyleApplicationLifetime);
+    }
+
+    private async Task QuitAsync(IClassicDesktopStyleApplicationLifetime? desktop)
+    {
+        if (!await CloseAllAsync(_windows.Where(w => w.HasUnsavedChanges).ToList()))
+            return;
+        _quitConfirmed = true;
+        desktop?.Shutdown();
     }
 
     private void OpenEmptyWindowIfNone()
