@@ -12,4 +12,10 @@
     <Using Include="Xunit" />
     <ProjectReference Include="../CoffeePdf.Core/CoffeePdf.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The core's tests run on macOS and Linux (spec §10), so Unix-only calls such as File.SetUnixFileMode are fine. -->
+    <AssemblyAttribute Include="System.Runtime.Versioning.UnsupportedOSPlatformAttribute">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>
