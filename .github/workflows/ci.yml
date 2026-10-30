@@ -55,6 +55,19 @@ jobs:
         with:
           global-json-file: global.json
 
+      # No PDF is tracked: a saved one carries its markup author, which defaults to the macOS full name. The pre-commit
+      # hook refuses one, but a clone that never set core.hooksPath doesn't run it, so this catches what got past.
+      # Any case of the extension, and the same on every runner, so only the Ubuntu leg runs it.
+      - name: Check that no PDF is tracked
+        if: matrix.runner == 'ubuntu-24.04'
+        run: |
+          pdfs=$(git ls-files -z -- ':(icase)*.pdf' | tr '\0' '\n')
+          if [ -n "$pdfs" ]; then
+            echo "::error::A PDF is tracked, and a saved one carries its markup author. Take it out of the history before merging:"
+            printf '%s\n' "$pdfs"
+            exit 1
+          fi
+
       # Secrets can't be tested in an if:, so this reads the key through env:, and never prints it. A warning, not a
       # failure: a pull request without secrets must still pass.
       - name: Check for the licence key

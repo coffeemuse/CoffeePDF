@@ -20,6 +20,9 @@ dotnet run --project CoffeePdf -- path/to/file.pdf
 packaging/mac/package.sh 0.0.1   # CoffeePDF.app and its .dmg, on a Mac
 ```
 
+Run `git config core.hooksPath .githooks` once per clone, so the hooks (which need `python3`) keep personal details
+out of the history.
+
 Signed, notarised releases come from `v*` tags in CI. [Releasing](docs/RELEASING.md) covers their secrets.
 
 ## Licence

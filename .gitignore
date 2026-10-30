@@ -432,3 +432,7 @@ FodyWeavers.xsd
 
 # Files the probes write when COFFEEPDF_PROBE_OUT points here (CoffeePdf.Tests/Probe.cs)
 probe-out/
+
+# No PDF is committed: a PDF CoffeePDF saved carries its markup author, which defaults to the macOS full name
+# (.githooks/pre-commit refuses one too). Fixtures are built in code. Any case, since Linux tells them apart.
+*.[Pp][Dd][Ff]

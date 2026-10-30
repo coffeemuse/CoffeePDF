@@ -1,0 +1,11 @@
+#!/bin/sh
+# Keeps the owner's personal details out of CoffeePDF's commit messages (CLAUDE.md, spec §16): the same name check as
+# pre-commit, on the message git passes in $1. It has no PDF check, since a message isn't a file. Git runs it once a
+# clone sets `git config core.hooksPath .githooks`.
+set -eu
+
+if ! python3 -I -c '' > /dev/null 2>&1; then
+  echo "commit-msg: the personal-details check needs python3, and there isn't a working one on the PATH. Install it, then commit again." >&2
+  exit 1
+fi
+exec python3 -I "$(dirname "$0")/check-personal-details.py" message "$1"
