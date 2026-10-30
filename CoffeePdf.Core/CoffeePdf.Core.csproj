@@ -3,5 +3,12 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>CoffeePdf.Core</RootNamespace>
+    <!-- Pdf/Pdfium.cs passes pointers to PDFium. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The PdfViewer's PDFium, for the core's own calls and for its tests on macOS and Linux. -->
+    <PackageReference Include="bblanchon.PDFium.macOS" />
+    <PackageReference Include="bblanchon.PDFium.Linux" />
+  </ItemGroup>
 </Project>

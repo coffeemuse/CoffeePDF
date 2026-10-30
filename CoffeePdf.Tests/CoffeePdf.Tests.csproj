@@ -14,6 +14,10 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
+    <!-- MinimalPdf lives with the core's tests, which need it without the app; the app's tests compile it too. -->
+    <Compile Include="../CoffeePdf.Core.Tests/Fixtures/MinimalPdf.cs" Link="Fixtures/MinimalPdf.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../CoffeePdf/CoffeePdf.csproj" />
   </ItemGroup>
