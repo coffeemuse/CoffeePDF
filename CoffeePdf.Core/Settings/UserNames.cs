@@ -30,6 +30,12 @@ public static class UserNames
         return null;
     }
 
+    /// <summary>
+    /// How long <c>id -F</c> gets. It asks the directory service, and a Mac bound to a directory it can't reach would
+    /// otherwise hold up the window that asked for the name (the first save, or Settings…) for as long as that takes.
+    /// </summary>
+    private static readonly TimeSpan IdTimeout = TimeSpan.FromSeconds(2);
+
     private static string? RunIdF()
     {
         try
@@ -39,13 +45,30 @@ public static class UserNames
             using var id = Process.Start(start);
             if (id is null)
                 return null;
+            // The output is read once id has exited: a name fits the pipe's buffer, so id never waits for the reader.
+            if (!id.WaitForExit(IdTimeout))
+            {
+                Kill(id);
+                return null; // the user name stands in for the full name
+            }
             var name = id.StandardOutput.ReadToEnd();
-            id.WaitForExit();
             return id.ExitCode == 0 ? name : null;
         }
         catch (Exception e) when (e is Win32Exception or IOException or InvalidOperationException)
         {
             return null;
+        }
+    }
+
+    private static void Kill(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            // It ended just now, or it can't be killed: either way there's nothing more to do, and the caller moves on.
         }
     }
 }
