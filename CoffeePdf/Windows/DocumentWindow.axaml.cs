@@ -173,6 +173,30 @@ public partial class DocumentWindow : Window
     public Task PrintAsync() => Viewer.PrintAsync(new PrintOptions { Title = Path.GetFileName(_path) ?? "CoffeePDF" });
 
     /// <summary>
+    /// Prints, and shows a failure instead of throwing it. Nothing catches an exception out of a menu handler, so one
+    /// from a missing or failing print service would end the app, and the unsaved markups with it.
+    /// </summary>
+    internal async Task PrintAndReportAsync()
+    {
+        try
+        {
+            await PrintAsync();
+        }
+        catch (Exception error) // whatever the print service throws: the user is told, and the document is untouched
+        {
+            try
+            {
+                await ReportError($"“{Path.GetFileName(_path) ?? "CoffeePDF"}” couldn’t be printed.", error.Message);
+            }
+            catch (Exception)
+            {
+                // The window may have closed while the print dialog was up, and then there's nothing to show the error
+                // over. The print has failed all the same, and that is all there is to say.
+            }
+        }
+    }
+
+    /// <summary>
     /// Closes the window, first asking to save its changes, if it has any (spec §6.8). Returns false if it stayed
     /// open: the user cancelled, or the save failed.
     /// </summary>
@@ -262,7 +286,7 @@ public partial class DocumentWindow : Window
 
     private void OnClose(object? sender, EventArgs e) => Close();
 
-    private async void OnPrint(object? sender, EventArgs e) => await PrintAsync();
+    private async void OnPrint(object? sender, EventArgs e) => await PrintAndReportAsync();
 
     private static T Parameter<T>(object? sender) where T : struct, Enum =>
         Enum.Parse<T>((string)((NativeMenuItem)sender!).CommandParameter!);

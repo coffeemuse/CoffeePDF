@@ -121,6 +121,50 @@ public sealed class MenuTests : IDisposable
         Assert.Equal("fixture.pdf", Assert.Single(printer.Titles));
     }
 
+    [PdfViewerFact]
+    public async Task A_print_that_fails_is_reported_and_does_not_escape()
+    {
+        var path = Fixture();
+
+        var errors = await Headless.RunAsync(async () =>
+        {
+            var (window, errors) = await TestWindows.OpenAsync(path);
+            window.Viewer.PrintService = new FailingPrinter();
+            await window.PrintAndReportAsync();
+            return errors;
+        });
+
+        var error = Assert.Single(errors);
+        Assert.Contains("“fixture.pdf” couldn’t be printed.", error);
+        Assert.Contains("No printer", error);
+    }
+
+    [PdfViewerFact]
+    public async Task A_failure_to_show_the_print_error_does_not_escape_either()
+    {
+        var path = Fixture();
+
+        await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Viewer.PrintService = new FailingPrinter();
+            // As when the window closed while the print dialog was up: there's nothing to show the error over.
+            window.ReportError = (_, _) => Task.FromException(new InvalidOperationException("The window has closed"));
+            await window.PrintAndReportAsync();
+            return true;
+        });
+    }
+
+    private sealed class FailingPrinter : IPrintService
+    {
+        public bool IsSupported => true;
+
+        public Task PrintAsync(IPdfDocument document, PrintOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("No printer");
+
+        public Task ShowPrintPreviewAsync(IPdfDocument document, PrintOptions? options = null) => Task.CompletedTask;
+    }
+
     private sealed class FakePrinter : IPrintService
     {
         public List<string?> Titles { get; } = [];
