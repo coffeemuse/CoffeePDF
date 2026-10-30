@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Headless;
+using CoffeePdf.Core.Settings;
 
 namespace CoffeePdf.Tests;
 
@@ -9,7 +10,15 @@ namespace CoffeePdf.Tests;
 /// </summary>
 public static class Headless
 {
-    private static readonly Lazy<HeadlessUnitTestSession> Session = new(() => HeadlessUnitTestSession.StartNew(typeof(Headless)));
+    private static readonly Lazy<HeadlessUnitTestSession> Session = new(() =>
+    {
+        // The app's settings and Open Recent go to a folder of the run's own, never the real one. Its Markup author is
+        // set before the app starts, so no save in a test falls back to the account's full name (CLAUDE.md).
+        var settings = Directory.CreateTempSubdirectory("coffeepdf-settings-").FullName;
+        new SettingsStore(settings).MarkupAuthor = Windows.TestWindows.Author;
+        Environment.SetEnvironmentVariable(SettingsLocation.OverrideVariable, settings);
+        return HeadlessUnitTestSession.StartNew(typeof(Headless));
+    });
 
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()

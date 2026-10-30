@@ -6,6 +6,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Files;
+using CoffeePdf.Core.Settings;
 using CoffeePdf.Windows;
 
 namespace CoffeePdf;
@@ -20,7 +21,22 @@ public partial class App : Application
 
     private readonly List<DocumentWindow> _windows = [];
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    private readonly Lazy<string> _fullName = new(UserNames.FullName);
+
+    /// <summary>The running app, from anywhere in it.</summary>
+    public static new App Current => (App)Application.Current!;
+
+    /// <summary>The preferences (spec §5), in <see cref="SettingsLocation.Folder"/>.</summary>
+    public SettingsStore Settings { get; private set; } = null!;
+
+    /// <summary>The name each save writes into new markups: the one set in Settings, else the macOS full name (spec §5).</summary>
+    public string MarkupAuthor => Settings.MarkupAuthor ?? _fullName.Value;
+
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        Settings = new SettingsStore(SettingsLocation.Folder());
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {

@@ -16,10 +16,11 @@
       </NativeMenuItem>
     </NativeMenu>
   </NativeMenu.Menu>
-  <!-- AutoSave stays off (spec §6.4): each edit would otherwise become a save. -->
+  <!-- Every save goes through DocumentWindow.SaveToAsync, which writes the markup author (spec §16 Decision 1), so the
+       PdfViewer's own saving is off. AutoSave stays off too (spec §6.4): each edit would otherwise become a save. -->
   <pdf:PdfViewer x:Name="Viewer"
                  ViewMode="Continuous"
                  SidebarMode="Thumbnails"
-                 AllowDocumentSaving="True"
+                 AllowDocumentSaving="False"
                  AutoSave="False" />
 </Window>

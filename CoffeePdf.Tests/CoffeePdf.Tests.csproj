@@ -18,6 +18,12 @@
     <Compile Include="../CoffeePdf.Core.Tests/Fixtures/MinimalPdf.cs" Link="Fixtures/MinimalPdf.cs" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The app's tests run on macOS (spec §10), so Unix-only calls such as File.SetUnixFileMode are fine. -->
+    <AssemblyAttribute Include="System.Runtime.Versioning.UnsupportedOSPlatformAttribute">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../CoffeePdf/CoffeePdf.csproj" />
   </ItemGroup>
