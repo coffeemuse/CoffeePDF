@@ -68,6 +68,72 @@ public sealed class MenuTests : IDisposable
         Assert.Equal(SidebarMode.TableOfContents, sidebar);
     }
 
+    private static IEnumerable<NativeMenuItem> AllItems(NativeMenu menu)
+    {
+        foreach (var item in menu.Items.OfType<NativeMenuItem>())
+        {
+            yield return item;
+            if (item.Menu is { } submenu)
+                foreach (var inner in AllItems(submenu))
+                    yield return inner;
+        }
+    }
+
+    /// <summary>
+    /// A CommandParameter is text that the handler turns into an enum with Enum.Parse, so a typo in one would throw
+    /// only when the item is clicked. This clicks them all, and fails if an item takes a parameter that none of the
+    /// three handlers is checked for here.
+    /// </summary>
+    [PdfViewerFact]
+    public async Task Every_menu_parameter_is_a_value_its_handler_accepts()
+    {
+        var path = Fixture();
+        string[] viewModes = ["Single Page", "Continuous", "Two Pages", "Two Pages Continuous"];
+        string[] sidebars = ["Hide Sidebar", "Thumbnails", "Table of Contents", "Bookmarks"];
+
+        var (counts, withParameter, failures) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            try
+            {
+                var items = AllItems(NativeMenu.GetMenu(window)!).Where(i => i.CommandParameter is not null).ToList();
+                var tools = AllItems(window.MenuItem("Annotate").Menu!).Where(i => i.CommandParameter is not null).ToList();
+                var modes = items.Where(i => viewModes.Contains(i.Header)).ToList();
+                var panels = items.Where(i => sidebars.Contains(i.Header)).ToList();
+                var failures = new List<string>();
+
+                // Each is first set to a different value, so a handler that did nothing would show.
+                void Click<T>(NativeMenuItem item, Action<object?, EventArgs> handler, Func<T> get, Action<T> set, T other) where T : struct, Enum
+                {
+                    var expected = Enum.Parse<T>((string)item.CommandParameter!);
+                    set(EqualityComparer<T>.Default.Equals(expected, other) ? default : other);
+                    handler(item, EventArgs.Empty);
+                    if (!EqualityComparer<T>.Default.Equals(get(), expected))
+                        failures.Add($"{item.Header}: {get()}, not {expected}");
+                }
+
+                var viewer = window.Viewer;
+                foreach (var item in tools)
+                    Click(item, window.OnTool, () => viewer.ActiveTool, v => viewer.ActiveTool = v, PdfViewerTool.Highlight);
+                foreach (var item in modes)
+                    Click(item, window.OnViewMode, () => viewer.ViewMode, v => viewer.ViewMode = v, PdfViewMode.TwoPages);
+                foreach (var item in panels)
+                    Click(item, window.OnSidebar, () => viewer.SidebarMode, v => viewer.SidebarMode = v, SidebarMode.Bookmarks);
+                return ((tools.Count, modes.Count, panels.Count), items.Count, failures);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Empty(failures);
+        Assert.Equal(withParameter, counts.Item1 + counts.Item2 + counts.Item3);
+        Assert.Equal(4, counts.Item2);
+        Assert.Equal(4, counts.Item3);
+        Assert.NotEqual(0, counts.Item1);
+    }
+
     [PdfViewerFact]
     public async Task Undo_and_Redo_follow_the_PdfViewer()
     {
