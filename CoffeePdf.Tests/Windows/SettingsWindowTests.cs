@@ -53,6 +53,26 @@ public sealed class SettingsWindowTests : IDisposable
     }
 
     [Fact]
+    public async Task A_name_that_cant_be_kept_stays_in_the_box_and_nothing_crashes()
+    {
+        // A settings folder that can't be made, since its parent is a file: a failed write, as a full disk or a read-only
+        // folder would give.
+        var file = Path.Combine(_dir, "a-file");
+        File.WriteAllText(file, "");
+        var store = new SettingsStore(Path.Combine(file, "settings"));
+
+        var (exception, text) = await Headless.RunAsync(() =>
+        {
+            var window = new SettingsWindow(store, "Default Name", new FakeDefaultApp(true, true));
+            var thrown = Record.Exception(() => window.AuthorBox.Text = "New Name");
+            return Task.FromResult((thrown, window.AuthorBox.Text));
+        });
+
+        Assert.Null(exception);
+        Assert.Equal("New Name", text);
+    }
+
+    [Fact]
     public async Task The_button_makes_CoffeePDF_the_default_and_then_goes()
     {
         var defaultApp = new FakeDefaultApp(true, false);

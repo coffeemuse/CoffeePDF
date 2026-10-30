@@ -23,8 +23,17 @@ public partial class SettingsWindow : Window
         // Not TextChanged: Avalonia raises that later, on the dispatcher, and a change is kept the moment it's made.
         AuthorBox.PropertyChanged += (_, e) =>
         {
-            if (e.Property == TextBox.TextProperty)
+            if (e.Property != TextBox.TextProperty)
+                return;
+            try
+            {
                 store.MarkupAuthor = AuthorBox.Text;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A full disk or a folder that can't be written: a convenience setting must never crash the app mid-keystroke.
+                // The typed text stays in the box, and the store keeps its last good value.
+            }
         };
         DefaultAppSection.IsVisible = defaultApp.IsSupported;
         ShowDefaultApp();
