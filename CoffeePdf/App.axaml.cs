@@ -50,10 +50,18 @@ public partial class App : Application
         Settings = new SettingsStore(SettingsLocation.Folder());
         Recent = new RecentDocuments(SettingsLocation.Folder());
 
-        // The app menu: Avalonia keeps macOS's own About, Hide and Quit beside it.
+        // The app menu. macOS adds Services, Hide and Quit after these. Avalonia's own About Avalonia goes once the app
+        // sets a menu, so About CoffeePDF opens macOS's About panel instead.
+        var appMenu = new NativeMenu();
+        if (AboutPanel.IsSupported)
+        {
+            var about = new NativeMenuItem { Header = "About CoffeePDF" };
+            about.Click += (_, _) => AboutPanel.Show();
+            appMenu.Items.Add(about);
+            appMenu.Items.Add(new NativeMenuItemSeparator());
+        }
         var settings = new NativeMenuItem { Header = "Settings…", Gesture = new KeyGesture(Key.OemComma, KeyModifiers.Meta) };
         settings.Click += (_, _) => ShowSettings();
-        var appMenu = new NativeMenu();
         appMenu.Items.Add(settings);
         NativeMenu.SetMenu(this, appMenu);
     }
