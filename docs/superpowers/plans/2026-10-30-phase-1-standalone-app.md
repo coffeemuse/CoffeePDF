@@ -44,8 +44,8 @@ The PdfViewer's own saving is off, so nothing can save around that path.
 - **Compiler settings:** `TreatWarningsAsErrors`, `Nullable` and `ImplicitUsings` are on everywhere.
 - **Every save goes through `DocumentWindow.SaveToAsync`.** The PdfViewer's `AllowDocumentSaving` and `AutoSave` stay
   `False`.
-- **PDFium is shared with the PdfViewer.** CoffeePDF's calls take `Pdfium.Gate`, and nothing ever calls
-  `FPDF_DestroyLibrary`.
+- **PDFium is shared with the PdfViewer** (reversed in the build: CoffeePDF has its own copy; spec §16, Phase 1).
+  CoffeePDF's calls take `Pdfium.Gate`, and nothing ever calls `FPDF_DestroyLibrary`.
 - **Settings in tests:**
   - Tests never touch the real settings folder. `Headless` points `COFFEEPDF_SETTINGS_DIR` at a temporary folder before
     Avalonia starts.

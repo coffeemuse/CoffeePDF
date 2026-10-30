@@ -124,7 +124,9 @@ It uses .NET 10, Avalonia 12.1 (matching the Helper), and `Avalonia.Controls.Pdf
     - It sends the secret as `X-Healdan-Secret`, and never times out on the routes that wait for a window.
     - The routes it calls are listed in one place, `ChannelRoutes` (§9).
   - `Documents/`: a window's mode (§6.1), its title, which commands are enabled, and the save-follow loop (§6.4).
+  - `Files/`: `PdfFile`, which tells a PDF by its header, and `AtomicFile`, which writes a file whole through a temporary file renamed over it (§16 row 2).
   - `Locks/`: the lock file beside an editable copy (§6.8).
+  - `Pdf/`: CoffeePDF's own PDFium (§16 Decision 1): the markup author (§7), written into the annotations made in CoffeePDF.
   - `Settings/`: the preferences (§5) and Open Recent.
 - **`CoffeePdf/`** is the Avalonia app:
   - document windows hosting the PdfViewer;
@@ -346,7 +348,7 @@ Each phase gets its own plan in `docs/superpowers/plans/`. Phase 0 is a spike: i
 - **Healdan's milestone** gets its name and number in Healdan's roadmap during its own design session (§4.4).
 - **The Linux phase** starts after the Helper's Linux phase (M3's phase 2) lands.
 
-## 16. Phase 0 findings (2026-10-29)
+## 16. Phase 0 and Phase 1 findings
 
 Phase 0 is built, and the keyed run is done (2026-10-29). The owner answered its decisions on 2026-10-30. Gatekeeper passed on the first release (`v0.0.1-spike4`, 2026-10-30). Only the two Acrobat checks are still open, and they're best effort. The first build had no Avalonia licence key, so the tests and probes that need a licensed PdfViewer were skipped. The keyed run then ran all that need the key, without changing any code or test. The owner's checks on the Mac followed (2026-10-29). Each Result separates what was observed in Phase 0 (keyless first, then the keyed run), what comes from the docs, and what is still pending.
 
@@ -442,8 +444,9 @@ what was planned. This is what the build showed, and what it changed.
 - **The package (observed 2026-10-30).** `packaging/mac/package.sh 0.1.0-phase1`, with the key and no signing identity
   (ad-hoc, without the hardened runtime; Decision 4), made `CoffeePDF-0.1.0-phase1.dmg`, 45,486,893 bytes, sha256
   `8d81d7484ab0420d6bbf754a0800892df31c5781ad460339105c3ee9cb030c92`. `Contents/MacOS` holds six files, all native and
-  arm64: `CoffeePDF`, `libAvaloniaNative`, `libHarfBuzzSharp`, `libSkiaSharp`, `libpdfium` and `libcoffeepdfium`. It runs
-  on the Mac that built it. The build didn't open the app; the owner's checks do, below.
+  arm64: `CoffeePDF`, `libAvaloniaNative`, `libHarfBuzzSharp`, `libSkiaSharp`, `libpdfium` and `libcoffeepdfium`. It is
+  expected to run on the Mac that built it (Decision 4), but it has not been launched: the build didn't open the app,
+  and the owner's checks do, below.
 - **CoffeePDF has its own copy of PDFium (Decision 1, call).** This reverses the plan's one shared copy.
   - Sharing the PdfViewer's copy failed two ways, as Decision 1 says: a segfault after the PdfViewer's last document
     closed and shut PDFium down, and an occasional crash in font loading when a background save met a render.
@@ -470,7 +473,8 @@ what was planned. This is what the build showed, and what it changed.
 - **Personal details (owner, 2026-10-30).** A saved PDF carries the Markup author, which defaults to the macOS full
   name, so the repository keeps it out.
   - `.githooks/pre-commit` refuses any PDF, and any change holding the account's full name, account name or home folder,
-    in UTF-8, UTF-16 or hex.
+    in UTF-8, UTF-16, Latin-1 or hex. The hooks also check commit messages (`.githooks/commit-msg`), and refuse any PDF
+    by its content, whatever its name; a file they can't read refuses the commit.
   - Tests save with the made-up author `Test Reviewer`, which `Headless` sets before the app starts.
   - CI masks the Developer ID identity in its logs.
 - **A finding for the owner.** Two windows' PdfViewers share one PDFium, which the PdfViewer owns. Whether two documents
