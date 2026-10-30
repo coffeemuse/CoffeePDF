@@ -160,7 +160,7 @@ Healdan's process gives every milestone a design spec in its own repository, so 
    - The Helper's Settings and menu show CoffeePDF's state.
 6. **The web page's Open in App lists `pdf`** (`HealdanOpenInApp`), once a Helper that takes PDFs is released, as `.odg` did.
 7. **Docs:** the Developer Guide's Desktop Clients page and the user manual describe CoffeePDF.
-8. **A check for that spec:** how the Helper's close watch treats a copy whose lock file hasn't appeared yet. CoffeePDF writes its lock once the window has the PDF loaded (§6.8), which may take longer than LibreOffice's. A change for that spec: the Helper's folder watch counts a temporary file renamed over a copy as a save of that copy, and ignores the temporary file (§16 row 2; owner, 2026-10-30, §16 Decision 3).
+8. **A check for that spec:** how the Helper's close watch treats a copy whose lock file hasn't appeared yet. CoffeePDF writes its lock once the window has the PDF loaded (§6.8), which may take longer than LibreOffice's. A change for that spec: the Helper's folder watch counts a temporary file renamed over a copy as a save of that copy, and ignores the temporary file (§16 row 2; owner, 2026-10-30, §16 Decision 3). CoffeePDF names that file `.coffeepdf-` followed by 32 hex digits and `.tmp`, in the copy's folder, whatever the copy's name, so the longest names still fit (Phase 1's plan, `AtomicFile`).
 
 ## 5. Preferences
 
@@ -382,6 +382,13 @@ Phase 0 is built, and the keyed run is done (2026-10-29). The owner answered its
    - **Which annotations are new.** Only those added in this window get the author, not another app's notes that have none.
    - **Keeping the author.** The control's own copy of the document still has no author after a stamp, so a later full rewrite (any unsigned file) drops it unless every save stamps again.
    - **What the toolbar's tools write.** The probe saw only `AddStickyNoteAsync`, so Phase 1 probes the toolbar's tools as well.
+
+   **Settled in Phase 1's plan (2026-10-30)**, from the planning probe below (call):
+   - **Which PDFium.** The PdfViewer's own `libpdfium`, which `CoffeePdf.Core` binds to by the same name, so the process holds one copy. CoffeePDF's calls take a lock of their own. The PdfViewer locks per document, and nothing joins the two, so CoffeePDF calls PDFium only while saving, and only on the pages it needs. This is the residual risk.
+   - **When the author is written.** In a save CoffeePDF owns. The PdfViewer saves to memory, CoffeePDF writes the author as an incremental update, and a temporary file is renamed over the file. That is one write, in Decision 3's pattern, with the original bytes kept.
+   - **Which annotations are new.** Markup annotations on the pages `AnnotationAdded` reported, with a `/NM` and no `/T`, whose `/NM` isn't an authorless annotation's in the file the save replaces.
+   - **Keeping the author.** Every save writes it again, since the PdfViewer's own copy never has it.
+   - **The toolbar's tools.** The planning probe found notes, stamps and highlights alike: a `/NM` and no `/T`. The rule covers every markup type.
 2. **A build without the key (item 4).** Does the owner accept `AvaloniaUILicenseDisableTask=true` for builds without the key? Without it, such a build fails with AVLIC0001. With it, contributors without a licence can still build and test everything but the PdfViewer (observed here: 20 passed, 6 skipped), and CI without the secret is expected to (it hasn't run). Observed (the probe `What_the_viewer_does_without_a_licence`): without the key the PdfViewer doesn't work in a reduced way. It throws when a window creates it, so a keyless build can't run the app or show a PDF (expected, not run). That raises no licensing question, since the control is unusable unlicensed. The plan's `WarningsNotAsErrors` can't work, because the missing key is an error. If the owner declines, keyless builds fail until another route is found.
 
    **Answer (owner, 2026-10-30): accepted.** Recheck the switch whenever `AvaloniaUI.Licensing` is upgraded, since it's in the package's targets file and not its README.
@@ -394,7 +401,24 @@ Phase 0 is built, and the keyed run is done (2026-10-29). The owner answered its
 
    **Answer (owner, 2026-10-30): (a), done.** `package.sh` now applies the hardened runtime only with a signing identity. Observed (2026-10-30): a keyed package without one, `0.0.1-spike5`, got an ad-hoc signature without the runtime flag (`flags=0x2(adhoc)`) and passed `codesign --verify --strict --deep`. Run from Terminal with a PDF, it stayed up and loaded `libAvaloniaNative`, `libHarfBuzzSharp`, `libSkiaSharp` and `libpdfium`, with no dyld, AMFI or signature errors.
 
-The decisions are answered, and Gatekeeper passed (the owner, 2026-10-30, on `v0.0.1-spike4`), so Phase 1's plan can be written (§13). The Acrobat checks don't hold it, since they're best effort (owner, 2026-10-30; issue #3).
+The decisions are answered, and Gatekeeper passed (the owner, 2026-10-30, on `v0.0.1-spike4`), so Phase 1's plan is written (2026-10-30, `docs/superpowers/plans/2026-10-30-phase-1-standalone-app.md`; §13). The Acrobat checks don't hold it, since they're best effort (owner, 2026-10-30; issue #3).
+
+### The planning probe (2026-10-30)
+
+These are the facts Phase 1's plan builds on. Throwaway tests, not committed, ran with the key, in the headless test host, against the PdfViewer 12.0.1.
+- **Saving to a stream:** `SaveDocumentAsync(Stream)` clears `IsDirty`, and keeps `Source` and the undo history.
+  - With `AllowDocumentSaving` off, it still works, and the PdfViewer's own `SaveAsync` does nothing.
+  - A signed file's stream save is an incremental update on the original bytes. It was again after the file was replaced with the first save's bytes, a second note was added, and it was saved again: that save started with the original, not with the first save. The signature verified after both.
+- **Undo after a save:** an undo past a save leaves `IsDirty` false, though the document no longer matches its file. The PdfViewer's docs say only that undoing back to the saved state doesn't clear it.
+- **New annotations:** `AnnotationAdded` fired for a sticky note, a stamp and a highlight, each with its page and index. None had an author.
+  - In the saved bytes each had a `/NM` (the form `av-` and 32 hex digits) and no `/T`.
+  - Another app's note without a `/NM` still had none after a save.
+- **How the PdfViewer calls PDFium:** through an obfuscated class of 240 imports from `pdfium` (bblanchon.PDFium 157.0.8086). Its locks are per instance, not global.
+  - PDFium's own source returns at once from `FPDF_InitLibrary` when it's already initialised.
+  - The bundled `libpdfium` exports everything the author needs: loading from memory and from a file, reading and setting an annotation's strings, and `FPDF_SaveAsCopy`.
+- **A prototype, outside the repository:** it set `/T` on an annotation through that library, and saved with `FPDF_INCREMENTAL`. The original bytes came back as the file's start, the author read back, and an annotation with an author, or without a `/NM`, was left as it was.
+- **The rest of the PdfViewer's API:** it has native printing on macOS (`PrintAsync`, through a replaceable `IPrintService`), its own password prompt, and `SetToolCommand` and `ActiveTool` for a host's own menus.
+  - Its keyboard shortcuts cover copy, select-all, zoom, save, the arrow keys, Home and End, but not undo.
 
 ### The owner's to-do list, to fill the pending rows
 
