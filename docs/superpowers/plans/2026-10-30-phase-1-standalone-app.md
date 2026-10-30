@@ -1,5 +1,7 @@
 # CoffeePDF Phase 1: Standalone App Implementation Plan
 
+Built 2026-10-30, with changes recorded in the spec's §16 (Phase 1).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make CoffeePDF a PDF app the owner can use on its own, in place of Preview. It writes the Markup author into
