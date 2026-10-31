@@ -41,9 +41,10 @@ public partial class SettingsWindow : Window
             }
         };
         HealdanBox.IsChecked = store.HealdanEnabled;
+        var reverting = false;
         HealdanBox.PropertyChanged += (_, e) =>
         {
-            if (e.Property != ToggleButton.IsCheckedProperty)
+            if (e.Property != ToggleButton.IsCheckedProperty || reverting)
                 return;
             try
             {
@@ -51,7 +52,17 @@ public partial class SettingsWindow : Window
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // As for the author: the box shows what was chosen, and the store keeps its last good value.
+                // Unlike the author, this switch decides where documents open and save, so the box must not show a state the
+                // app isn't in: it goes back to what the store keeps, without writing that again.
+                reverting = true;
+                try
+                {
+                    HealdanBox.IsChecked = store.HealdanEnabled;
+                }
+                finally
+                {
+                    reverting = false;
+                }
             }
         };
         DefaultAppSection.IsVisible = defaultApp.IsSupported;

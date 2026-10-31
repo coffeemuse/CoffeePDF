@@ -140,19 +140,19 @@ public sealed class SettingsWindowTests : IDisposable
     }
 
     [Fact]
-    public async Task Healdan_support_that_cant_be_kept_leaves_the_box_and_nothing_crashes()
+    public async Task Healdan_support_that_cant_be_kept_puts_the_box_back_and_nothing_crashes()
     {
         var store = new SettingsStore(_dir);
         var mode = File.GetUnixFileMode(_dir);
 
-        var shown = await Headless.RunAsync(() =>
+        var (exception, shown) = await Headless.RunAsync(() =>
         {
             var window = new SettingsWindow(store, "Default Name", new FakeDefaultApp(true, true));
             File.SetUnixFileMode(_dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
             try
             {
-                window.HealdanBox.IsChecked = true;
-                return Task.FromResult(window.HealdanBox.IsChecked);
+                var thrown = Record.Exception(() => window.HealdanBox.IsChecked = true);
+                return Task.FromResult((thrown, window.HealdanBox.IsChecked));
             }
             finally
             {
@@ -160,7 +160,8 @@ public sealed class SettingsWindowTests : IDisposable
             }
         });
 
-        Assert.True(shown);
+        Assert.Null(exception);
+        Assert.False(shown);
         Assert.False(store.HealdanEnabled);
     }
 }
