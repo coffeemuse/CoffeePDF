@@ -70,6 +70,12 @@ public partial class DocumentWindow : Window
             FileTypeChoices = [FilePickerFileTypes.Pdf],
             ShowOverwritePrompt = true,
         }))?.TryGetLocalPath();
+        PickFilesToOpen = async () => (await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open",
+            AllowMultiple = true,
+            FileTypeFilter = [FilePickerFileTypes.Pdf],
+        })).Select(file => file.TryGetLocalPath()).OfType<string>().ToList();
         Viewer.AnnotationAdded += (_, e) => _markedPages.Add(e.Annotation.PageIndex);
         Viewer.UndoRedoStateChanged += (_, _) =>
         {
@@ -174,6 +180,9 @@ public partial class DocumentWindow : Window
 
     /// <summary>The Mac's Save panel, given the name it starts with, answering the file picked or null. The tests replace it.</summary>
     internal Func<string?, Task<string?>> PickSaveTarget { get; set; }
+
+    /// <summary>The Mac's Open panel, answering the files picked. The tests replace it.</summary>
+    internal Func<Task<IReadOnlyList<string>>> PickFilesToOpen { get; set; }
 
     /// <summary>The pause between questions while a save is followed. The tests replace it, so none waits for the real pauses.</summary>
     internal Func<TimeSpan, CancellationToken, Task> Pause { get; set; } = Task.Delay;
@@ -313,8 +322,8 @@ public partial class DocumentWindow : Window
         return false;
     }
 
-    /// <summary>Save As (⇧⌘S): the Mac's Save panel. Task 13 sends it to the Helper first.</summary>
-    public Task<bool> SaveAsAsync() => SaveAsWithPanelAsync();
+    /// <summary>Save As (⇧⌘S): the Helper's Save window while Healdan support is on (spec §6.3), else the Mac's Save panel.</summary>
+    public Task<bool> SaveAsAsync() => Allowed.HelperBoxes ? SaveNewAsync() : SaveAsWithPanelAsync();
 
     /// <summary>
     /// The Mac's own Save panel: writes the document to the file picked, and the window moves to it. A closed window shows
@@ -493,6 +502,60 @@ public partial class DocumentWindow : Window
         {
             Healdan.Log.Warn($"The file written for Healdan couldn’t be deleted ({e.GetType().Name})");
         }
+    }
+
+    /// <summary>
+    /// Open… (⌘O): the Helper's Open window while Healdan support is on (spec §6.3). Its way back, a Helper that doesn't
+    /// answer, or support off shows the Mac's Open panel; an error is shown first.
+    /// </summary>
+    internal async Task OpenAsync()
+    {
+        if (Allowed.HelperBoxes)
+        {
+            try
+            {
+                // Opened: the Helper opens what was chosen in the app for its kind, so a PDF comes back to CoffeePDF.
+                if (await Healdan.Channel.OpenDialogAsync() is OpenDialogAction.Opened or OpenDialogAction.Cancel)
+                    return;
+            }
+            catch (HelperUnreachableException)
+            {
+                OnHelperAway();
+            }
+            catch (HelperErrorException e)
+            {
+                await TellAsync("Healdan Helper couldn’t show its Open window.", e.Message);
+            }
+        }
+        foreach (var path in await PickFilesToOpen())
+            App.Current.OpenFile(path);
+    }
+
+    /// <summary>Properties… (spec §6.7): the Helper's Properties window, or Save to Healdan for a PDF that isn't in Healdan.</summary>
+    internal async Task PropertiesAsync()
+    {
+        if (_moving || _path is not { } path)
+            return;
+        PropertiesAction action;
+        try
+        {
+            action = await Healdan.Channel.PropertiesAsync(path);
+        }
+        catch (HelperUnreachableException)
+        {
+            OnHelperAway();
+            await TellAsync("Healdan Helper isn’t running.", "Start it to see this document’s properties in Healdan.");
+            return;
+        }
+        catch (HelperErrorException e)
+        {
+            await TellAsync("Healdan Helper couldn’t show its Properties window.", e.Message);
+            return;
+        }
+        if (action == PropertiesAction.File)
+            await SaveNewAsync();
+        else if (action == PropertiesAction.Saved)
+            await AskHelperAsync(); // a new name in Healdan moves the title on
     }
 
     /// <summary>Print… (⌘P): the system print dialog, with the unsaved markups, under the file's name.</summary>
@@ -778,6 +841,11 @@ public partial class DocumentWindow : Window
         var allowed = Allowed;
         Viewer.IsReadOnly = !allowed.Markup;
         MenuItem("Save").IsEnabled = allowed.Save;
+        MenuItem("Healdan").IsVisible = allowed.HealdanMenu; // none with support off (spec §2.5 step 7)
+        MenuItem("Save to Healdan…").IsEnabled = allowed.SaveToHealdan;
+        MenuItem("Save as New Version").IsEnabled = allowed.SaveAsNewVersion;
+        MenuItem("Save as New Document…").IsEnabled = allowed.SaveAsNewDocument;
+        MenuItem("Properties…").IsEnabled = allowed.Properties;
         ShowBar(_document?.Bar);
         UpdateTitle();
     }
@@ -868,22 +936,26 @@ public partial class DocumentWindow : Window
 
     private void UpdateTitle() => Title = _document?.Title(HasUnsavedChanges, _savingToHealdan) ?? DocumentTitle.For(_path, HasUnsavedChanges);
 
-    private async void OnOpen(object? sender, EventArgs e)
-    {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open",
-            AllowMultiple = true,
-            FileTypeFilter = [FilePickerFileTypes.Pdf],
-        });
-        foreach (var file in files)
-            if (file.TryGetLocalPath() is { } path)
-                App.Current.OpenFile(path);
-    }
+    private async void OnOpen(object? sender, EventArgs e) => await OpenAsync();
 
     private async void OnSave(object? sender, EventArgs e) => await SaveAsync();
 
     private async void OnSaveAs(object? sender, EventArgs e) => await SaveAsAsync();
+
+    // Save to Healdan on a copy is its ordinary save, as in the LibreOffice extension; on a local PDF it files it (§6.6).
+    private async void OnSaveToHealdan(object? sender, EventArgs e)
+    {
+        if (_document?.Mode == DocumentMode.Editable)
+            await SaveAsync();
+        else
+            await SaveNewAsync();
+    }
+
+    private async void OnSaveAsNewVersion(object? sender, EventArgs e) => await SaveAsNewVersionAsync();
+
+    private async void OnSaveAsNewDocument(object? sender, EventArgs e) => await SaveNewAsync();
+
+    private async void OnProperties(object? sender, EventArgs e) => await PropertiesAsync();
 
     private void OnClose(object? sender, EventArgs e) => Close();
 

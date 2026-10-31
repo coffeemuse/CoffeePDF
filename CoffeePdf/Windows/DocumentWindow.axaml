@@ -76,6 +76,16 @@
           </NativeMenuItem>
         </NativeMenu>
       </NativeMenuItem>
+      <!-- Healdan's commands (spec §6.1): shown while Healdan support is on, each item on as the window's mode allows. -->
+      <NativeMenuItem Header="Healdan">
+        <NativeMenu>
+          <NativeMenuItem Header="Save to Healdan…" Click="OnSaveToHealdan" />
+          <NativeMenuItem Header="Save as New Version" Click="OnSaveAsNewVersion" />
+          <NativeMenuItem Header="Save as New Document…" Click="OnSaveAsNewDocument" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Properties…" Click="OnProperties" />
+        </NativeMenu>
+      </NativeMenuItem>
     </NativeMenu>
   </NativeMenu.Menu>
   <DockPanel x:Name="DocumentPanel">
