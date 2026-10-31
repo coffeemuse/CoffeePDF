@@ -120,6 +120,36 @@ public sealed class HealdanMenuTests : IDisposable
     }
 
     [PdfViewerFact]
+    public async Task A_window_closed_while_the_Helpers_Open_window_was_up_shows_no_Open_panel()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.OpenDialog, async _ =>
+        {
+            await gate.Task; // the user is still choosing, so the window closes before the answer comes
+            return new JsonObject { ["action"] = "local" };
+        });
+
+        var panels = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(Local(), _helper.Link());
+            var shown = 0;
+            window.PickFilesToOpen = () =>
+            {
+                shown++;
+                return Task.FromResult<IReadOnlyList<string>>([]);
+            };
+            var opening = window.OpenAsync();
+            await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.OpenDialog).Count == 1);
+            await CloseAsync(window);
+            gate.SetResult();
+            await opening;
+            return shown;
+        });
+
+        Assert.Equal(0, panels);
+    }
+
+    [PdfViewerFact]
     public async Task With_support_off_Open_and_Save_As_are_the_Macs_and_the_Helper_isnt_asked()
     {
         var (opened, saved) = await Headless.RunAsync(async () =>
@@ -206,6 +236,30 @@ public sealed class HealdanMenuTests : IDisposable
         });
 
         Assert.Equal(new[] { "properties", "save-new" }, _helper.Routes);
+    }
+
+    [PdfViewerFact]
+    public async Task A_window_closed_while_the_Helpers_Properties_window_was_up_shows_no_Save_window_when_it_answers_file()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.Properties, async _ =>
+        {
+            await gate.Task; // the Properties window is still up, so the window closes before the answer comes
+            return new JsonObject { ["action"] = "file" };
+        });
+
+        await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(Local(), _helper.Link());
+            var properties = window.PropertiesAsync();
+            await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.Properties).Count == 1);
+            await CloseAsync(window);
+            gate.SetResult();
+            await properties;
+            return true;
+        });
+
+        Assert.Equal(new[] { "properties" }, _helper.Routes);
     }
 
     [PdfViewerFact]

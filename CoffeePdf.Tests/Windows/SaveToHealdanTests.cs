@@ -511,4 +511,85 @@ public sealed class SaveToHealdanTests : IDisposable
             Assert.Single(errors));
         Assert.Equal(old, (string?)Assert.Single(_helper.CallsTo(ChannelRoutes.Closed))["path"]);
     }
+
+    [PdfViewerFact]
+    public async Task A_window_closed_while_its_copy_is_written_for_Healdan_files_nothing_and_deletes_the_copy()
+    {
+        var local = Local();
+        var temp = Path.Combine(_helper.Folders.Temp, "save-new.pdf");
+
+        var (saved, left, log) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(local, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var held = TestWindows.HoldWrites(window);
+            var flow = window.SaveNewAsync();
+            try
+            {
+                await TestWindows.WaitForAsync(() => held.Reached);
+                await CloseAsync(window); // Don't Save, while the copy is being written
+            }
+            finally
+            {
+                held.Release();
+            }
+            var result = await flow;
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            return (result, File.Exists(temp), File.ReadAllText(window.Healdan.Log.FilePath));
+        });
+
+        Assert.False(saved);
+        Assert.False(left); // the Helper was never handed it, so the window deletes it
+        Assert.Equal(new[] { "save-new" }, _helper.Routes);
+        Assert.Contains("Save to Healdan stopped: the window closed", log);
+    }
+
+    [PdfViewerFact]
+    public async Task A_window_moving_to_the_new_copy_opens_nothing_and_shows_no_Save_panel()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.File, async body =>
+        {
+            await gate.Task; // the filing waits, so the window is moving while the commands below come
+            var temp = (string)body["tempPath"]!;
+            var path = _helper.AddCopy("Report", 1, "1", pdf: File.ReadAllBytes(temp));
+            File.Delete(temp);
+            return FakeHelper.Json(_helper.StateOf(path));
+        });
+        var local = Local();
+
+        var (panels, saveAs, filed) = await Headless.RunAsync(async () =>
+        {
+            var link = _helper.Link();
+            var (window, _) = await TestWindows.OpenAsync(local, link);
+            var (open, save) = (0, 0);
+            window.PickFilesToOpen = () =>
+            {
+                open++;
+                return Task.FromResult<IReadOnlyList<string>>([]);
+            };
+            window.PickSaveTarget = _ =>
+            {
+                save++;
+                return Task.FromResult<string?>(null);
+            };
+            var flow = window.SaveNewAsync();
+            await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.File).Count == 1);
+            await window.OpenAsync(); // support on: not even the Helper's Open window
+            link.Settings.HealdanEnabled = false; // support off: the Mac's panels would be next
+            await window.OpenAsync();
+            var asked = await window.SaveAsAsync();
+            var shown = open + save;
+            link.Settings.HealdanEnabled = true;
+            gate.SetResult();
+            var result = await flow;
+            await CloseAsync(window);
+            return (shown, asked, result);
+        });
+
+        Assert.Equal(0, panels);
+        Assert.False(saveAs);
+        Assert.True(filed);
+        Assert.Empty(_helper.CallsTo(ChannelRoutes.OpenDialog));
+    }
 }

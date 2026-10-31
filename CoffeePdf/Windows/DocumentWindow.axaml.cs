@@ -326,22 +326,23 @@ public partial class DocumentWindow : Window
     public Task<bool> SaveAsAsync() => Allowed.HelperBoxes ? SaveNewAsync() : SaveAsWithPanelAsync();
 
     /// <summary>
-    /// The Mac's own Save panel: writes the document to the file picked, and the window moves to it. A closed window shows
-    /// none.
+    /// The Mac's own Save panel: writes the document to the file picked, and the window moves to it. A closed window, or
+    /// one moving to a new copy, shows none.
     /// </summary>
     internal async Task<bool> SaveAsWithPanelAsync() =>
-        !_closed && Viewer.HasDocument && await PickSaveTarget(Path.GetFileName(_path)) is { } target && await SaveToAsync(target);
+        !_closed && !_moving && Viewer.HasDocument && await PickSaveTarget(Path.GetFileName(_path)) is { } target && await SaveToAsync(target);
 
     /// <summary>
     /// Save to Healdan for a local PDF, and Save as New Document for a copy (spec §6.6): the Helper's Save window, then
     /// the PDF with its markups written to the answer's temporary file, filed, and the window moved to the new copy.
     /// The Helper's way back shows the Mac's Save panel, as does a Helper that doesn't answer its Save window, and a filing
     /// it refuses; an error is shown first. A Helper that doesn't answer the filing may have filed the document, so
-    /// the user is told, and no panel is shown. Returns whether the document was saved.
+    /// the user is told, and no panel is shown. A closed window files nothing, nor does one that closes while the copy
+    /// is written. Returns whether the document was saved.
     /// </summary>
     internal async Task<bool> SaveNewAsync()
     {
-        if (!Viewer.HasDocument || _document is not { } document || _moving)
+        if (_closed || !Viewer.HasDocument || _document is not { } document || _moving)
             return false;
         var original = document.TellsHelper ? _path : null;
         SaveNewAnswer answer;
@@ -373,6 +374,14 @@ public partial class DocumentWindow : Window
         if (!await SaveToAsync(temp, asCopy: true))
         {
             TryDeleteTemporary(temp); // the Helper deletes it only after /v1/file
+            return false;
+        }
+        if (_closed)
+        {
+            // The window closed while the copy was written: filing it would move a closed window, which waits for a load
+            // that never comes. The Helper hasn't been handed the file, so it's deleted here.
+            TryDeleteTemporary(temp);
+            Healdan.Log.Info("Save to Healdan stopped: the window closed");
             return false;
         }
         var filing = await FileAndMoveAsync(answer, original);
@@ -506,10 +515,13 @@ public partial class DocumentWindow : Window
 
     /// <summary>
     /// Open… (⌘O): the Helper's Open window while Healdan support is on (spec §6.3). Its way back, a Helper that doesn't
-    /// answer, or support off shows the Mac's Open panel; an error is shown first.
+    /// answer, or support off shows the Mac's Open panel; an error is shown first. A window moving to a new copy opens
+    /// nothing, and a window that closed meanwhile shows no panel.
     /// </summary>
     internal async Task OpenAsync()
     {
+        if (_moving)
+            return; // the window takes no input until it's the new copy's (spec §6.6 step 3)
         if (Allowed.HelperBoxes)
         {
             try
@@ -527,6 +539,8 @@ public partial class DocumentWindow : Window
                 await TellAsync("Healdan Helper couldn’t show its Open window.", e.Message);
             }
         }
+        if (_closed)
+            return; // the window closed while the Helper's Open window was up: there's nothing to show the Mac's panel over
         foreach (var path in await PickFilesToOpen())
             App.Current.OpenFile(path);
     }
