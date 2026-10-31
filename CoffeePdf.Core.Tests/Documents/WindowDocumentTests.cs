@@ -59,6 +59,15 @@ public sealed class WindowDocumentTests
     }
 
     [Fact]
+    public void A_copy_the_Helper_doesnt_know_is_local_even_once_the_Helper_was_away()
+    {
+        Assert.Equal(DocumentMode.Local, Asking().Answered(null).Answered(CopyState.Unknown(Copy)).Mode);
+        Assert.Equal(DocumentMode.Local, Asking().Answered(State()).Answered(null).Answered(CopyState.Unknown(Copy)).Mode);
+        Assert.Equal(DocumentMode.Editable, Asking().Answered(State()).Answered(CopyState.Unknown(Copy)).Mode);
+        Assert.Equal(DocumentMode.ReadOnly, Asking(ReadOnlyCopy).Answered(State(readOnly: true)).Answered(CopyState.Unknown(ReadOnlyCopy)).Mode);
+    }
+
+    [Fact]
     public void A_read_only_copy_stays_read_only()
     {
         var readOnly = Asking(ReadOnlyCopy).Answered(State(readOnly: true));

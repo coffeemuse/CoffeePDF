@@ -42,6 +42,19 @@ public partial class SettingsWindow : Window
         };
         HealdanBox.IsChecked = store.HealdanEnabled;
         var reverting = false;
+        // Shows what the store keeps, without writing that again.
+        void ShowKept()
+        {
+            reverting = true;
+            try
+            {
+                HealdanBox.IsChecked = store.HealdanEnabled;
+            }
+            finally
+            {
+                reverting = false;
+            }
+        }
         HealdanBox.PropertyChanged += (_, e) =>
         {
             if (e.Property != ToggleButton.IsCheckedProperty || reverting)
@@ -53,18 +66,15 @@ public partial class SettingsWindow : Window
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Unlike the author, this switch decides where documents open and save, so the box must not show a state the
-                // app isn't in: it goes back to what the store keeps, without writing that again.
-                reverting = true;
-                try
-                {
-                    HealdanBox.IsChecked = store.HealdanEnabled;
-                }
-                finally
-                {
-                    reverting = false;
-                }
+                // app isn't in: it goes back to what the store keeps.
+                ShowKept();
             }
         };
+        // Support changed elsewhere while Settings is open, as by a window's bar or the first launch's question: the box
+        // follows, until Settings closes.
+        EventHandler follow = (_, _) => ShowKept();
+        store.HealdanEnabledChanged += follow;
+        Closed += (_, _) => store.HealdanEnabledChanged -= follow;
         DefaultAppSection.IsVisible = defaultApp.IsSupported;
         ShowDefaultApp();
     }

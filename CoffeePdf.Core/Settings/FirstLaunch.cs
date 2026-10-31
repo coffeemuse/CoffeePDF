@@ -13,8 +13,9 @@ public static class FirstLaunch
         if (settings.HealdanAsked || settings.HealdanEnabled || !helperInstalled())
             return;
         var yes = await ask();
-        settings.HealdanAsked = true;
+        // Support first: if recording the question as asked then fails, the yes is kept, and support on stops it asking.
         if (yes)
             settings.HealdanEnabled = true;
+        settings.HealdanAsked = true;
     }
 }

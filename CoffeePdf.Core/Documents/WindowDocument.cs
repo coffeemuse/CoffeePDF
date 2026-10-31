@@ -44,8 +44,9 @@ public sealed record WindowDocument(string Path, DocumentMode Mode, CopyState? C
 
     /// <summary>
     /// The document after the Helper's answer about it, or after it didn't answer (<paramref name="state"/> null). A
-    /// read-only answer for a copy the Helper had called editable is a refused save (§6.9). A read-only copy stays so,
-    /// since the Helper doesn't hand a check-out back to an open window.
+    /// copy the Helper doesn't know is local, whether it was asking or the Helper was away. A read-only answer for a
+    /// copy the Helper had called editable is a refused save (§6.9). A read-only copy stays so, since the Helper
+    /// doesn't hand a check-out back to an open window.
     /// </summary>
     public WindowDocument Answered(CopyState? state)
     {
@@ -54,7 +55,7 @@ public sealed record WindowDocument(string Path, DocumentMode Mode, CopyState? C
         if (state is null)
             return Mode == DocumentMode.ReadOnly ? this : this with { Mode = DocumentMode.HelperAway };
         if (!state.Known)
-            return Mode == DocumentMode.Asking ? this with { Mode = DocumentMode.Local } : this;
+            return Mode is DocumentMode.Asking or DocumentMode.HelperAway ? this with { Mode = DocumentMode.Local } : this;
         if (Mode == DocumentMode.ReadOnly)
             return this with { Copy = state };
         if (state.ReadOnly)

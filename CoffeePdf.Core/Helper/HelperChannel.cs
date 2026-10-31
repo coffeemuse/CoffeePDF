@@ -82,6 +82,8 @@ public sealed class HelperChannel(HelperFolders folders, CoffeeLog log, IReadOnl
     /// <summary>
     /// <c>/v1/file</c>: files the PDF written to the Save window's <c>tempPath</c>, with the answer's values unchanged,
     /// and answers the new copy's state (§6.6). <paramref name="replaces"/> is the copy Save as New Document started from.
+    /// An answer without the new copy's path gives an empty one, so the window has no copy to open: the temporary file is
+    /// the Helper's, and goes once it's filed.
     /// </summary>
     public async Task<CopyState> FileAsync(SaveNewAnswer answer, string? replaces)
     {
@@ -95,7 +97,7 @@ public sealed class HelperChannel(HelperFolders folders, CoffeeLog log, IReadOnl
             ["app"] = App,
             ["replaces"] = replaces,
         };
-        return CopyState.From(await CallAsync(ChannelRoutes.File, body, default), answer.TempPath ?? "");
+        return CopyState.From(await CallAsync(ChannelRoutes.File, body, default), "");
     }
 
     /// <summary><c>/v1/properties</c>: the Helper's Properties window (§6.7).</summary>

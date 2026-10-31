@@ -1,3 +1,4 @@
+using System.Globalization;
 using CoffeePdf.Core.Settings;
 
 namespace CoffeePdf.Core.Logging;
@@ -35,7 +36,9 @@ public sealed class CoffeeLog(string folder)
 
     private void Write(string level, string message)
     {
-        var line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {level} {message}{Environment.NewLine}";
+        // In the invariant culture, so the time reads the same whatever the Mac's region: a Thai calendar's year is 543
+        // ahead, for one.
+        var line = string.Create(CultureInfo.InvariantCulture, $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {level} {message}{Environment.NewLine}");
         lock (_gate)
         {
             try

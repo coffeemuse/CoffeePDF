@@ -94,6 +94,28 @@ public sealed class HelperChannelTests : IDisposable
     }
 
     [Fact]
+    public async Task A_filing_answered_without_the_new_copys_path_gives_no_copy_to_open()
+    {
+        var temp = Path.Combine(_helper.Folders.Temp, "save.pdf");
+        _helper.Answer(ChannelRoutes.File, new JsonObject
+        {
+            ["known"] = true,
+            ["docNumber"] = 1,
+            ["title"] = "Report #1 v1",
+            ["docRef"] = "#1 v1",
+            ["readOnly"] = false,
+        });
+        var answer = SaveNewAnswer.From(JsonNode.Parse($$"""
+            {"action": "save", "folderId": 42, "name": "Report", "format": "pdf", "tempPath": "{{temp}}"}
+            """)!.AsObject());
+
+        var filed = await Channel().FileAsync(answer, replaces: null);
+
+        Assert.True(filed.Known);
+        Assert.Equal("", filed.Path); // not the temporary file, which is the Helper's, and gone once filed
+    }
+
+    [Fact]
     public async Task Without_channel_json_the_Helper_cant_be_reached()
     {
         _helper.GoAway();

@@ -140,6 +140,29 @@ public sealed class SettingsWindowTests : IDisposable
     }
 
     [Fact]
+    public async Task The_Healdan_box_follows_a_change_made_elsewhere_until_Settings_closes()
+    {
+        var store = new SettingsStore(_dir);
+        var changes = 0;
+        store.HealdanEnabledChanged += (_, _) => changes++;
+
+        var (shown, afterClose) = await Headless.RunAsync(() =>
+        {
+            var window = new SettingsWindow(store, "Default Name", new FakeDefaultApp(true, true));
+            window.Show();
+            store.HealdanEnabled = true; // as the bar's Turn On Healdan Support, or the first launch's question, does
+            var box = window.HealdanBox.IsChecked;
+            window.Close();
+            store.HealdanEnabled = false;
+            return Task.FromResult((box, window.HealdanBox.IsChecked));
+        });
+
+        Assert.True(shown);
+        Assert.True(afterClose); // closed, Settings no longer follows
+        Assert.Equal(2, changes); // the box didn't write either change back
+    }
+
+    [Fact]
     public async Task Healdan_support_that_cant_be_kept_puts_the_box_back_and_nothing_crashes()
     {
         var store = new SettingsStore(_dir);

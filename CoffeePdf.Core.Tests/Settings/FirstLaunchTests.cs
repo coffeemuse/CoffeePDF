@@ -31,6 +31,29 @@ public sealed class FirstLaunchTests : IDisposable
     }
 
     [Fact]
+    public async Task A_yes_is_kept_even_if_it_cant_then_be_recorded_as_asked()
+    {
+        var store = new SettingsStore(_dir);
+        var mode = File.GetUnixFileMode(_dir);
+        // Once support is on, the settings folder can't be written, as a full disk would leave it.
+        store.HealdanEnabledChanged += (_, _) => File.SetUnixFileMode(_dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        Exception? thrown;
+        try
+        {
+            thrown = await Record.ExceptionAsync(() => AskAsync(store, installed: true, answer: true));
+        }
+        finally
+        {
+            File.SetUnixFileMode(_dir, mode);
+        }
+
+        Assert.True(thrown is IOException or UnauthorizedAccessException, $"Expected the write to fail, not {thrown?.GetType().Name ?? "nothing"}");
+        var after = new SettingsStore(_dir);
+        Assert.True(after.HealdanEnabled);
+        Assert.Equal(0, await AskAsync(after, installed: true, answer: false)); // support is on, so it isn't asked again
+    }
+
+    [Fact]
     public async Task Not_now_leaves_it_off_and_it_isnt_asked_again()
     {
         var store = new SettingsStore(_dir);

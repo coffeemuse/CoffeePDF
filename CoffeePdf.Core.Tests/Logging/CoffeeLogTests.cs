@@ -1,3 +1,4 @@
+using System.Globalization;
 using CoffeePdf.Core.Logging;
 
 namespace CoffeePdf.Core.Tests.Logging;
@@ -21,6 +22,26 @@ public sealed class CoffeeLogTests : IDisposable
         Assert.Equal(2, lines.Length);
         Assert.EndsWith(" INFO /v1/state answered", lines[0]);
         Assert.EndsWith(" WARN /v1/file answered 500 (internal-error)", lines[1]);
+    }
+
+    [Fact]
+    public void The_time_is_written_the_same_way_in_every_region()
+    {
+        var log = new CoffeeLog(_dir);
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("th-TH"); // whose calendar's years are 543 ahead of the Gregorian
+        try
+        {
+            log.Info("/v1/state answered");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+
+        var line = Assert.Single(File.ReadAllLines(log.FilePath));
+        var time = DateTimeOffset.ParseExact(line[..30], "yyyy-MM-dd HH:mm:ss.fff zzz", CultureInfo.InvariantCulture);
+        Assert.InRange(DateTimeOffset.Now - time, TimeSpan.Zero, TimeSpan.FromMinutes(1));
     }
 
     [Fact]
