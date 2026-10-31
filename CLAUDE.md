@@ -48,5 +48,11 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
   PdfViewer's. The core's calls take `Pdfium.Gate`, and nothing calls `FPDF_DestroyLibrary`. `package.sh` names its
   architecture.
 - **Tests never touch the real settings:** `Headless` sets `COFFEEPDF_SETTINGS_DIR`, and core tests pass a folder.
+- **CoffeePDF reaches Healdan only through the Helper's channel** (spec §9). `ChannelRoutes` lists every route it
+  calls. The client calls only those, and `FakeHelper` serves only those. A change to the channel in Healdan changes
+  the list in the same release.
+- **Tests never touch the real Helper:** `Headless` sets `HEALDAN_HELPER_DEV_ROOT` and `COFFEEPDF_LOG_DIR` to folders of
+  the run's own, and the flows' tests give each window a `FakeHelper`'s link.
+- **Nothing logs the channel's secret or a file's contents** (`CoffeeLog`). Log an exception by its type.
 - **Packaging:** only native code may sit in the bundle's `Contents/MacOS`, which `package.sh` checks.
 - **Pushes go through the owner.** Never push, tag or open a pull request without the owner's go-ahead.

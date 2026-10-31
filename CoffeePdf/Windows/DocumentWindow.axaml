@@ -76,15 +76,34 @@
           </NativeMenuItem>
         </NativeMenu>
       </NativeMenuItem>
+      <!-- Healdan's commands (spec §6.1): shown while Healdan support is on, each item on as the window's mode allows. -->
+      <NativeMenuItem Header="Healdan">
+        <NativeMenu>
+          <NativeMenuItem Header="Save to Healdan…" Click="OnSaveToHealdan" />
+          <NativeMenuItem Header="Save as New Version" Click="OnSaveAsNewVersion" />
+          <NativeMenuItem Header="Save as New Document…" Click="OnSaveAsNewDocument" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Properties…" Click="OnProperties" />
+        </NativeMenu>
+      </NativeMenuItem>
     </NativeMenu>
   </NativeMenu.Menu>
-  <!-- Every save goes through DocumentWindow.SaveToAsync, which writes the markup author (spec §16 Decision 1), so the
-       PdfViewer's own saving is off. AutoSave stays off too (spec §6.4): each edit would otherwise become a save.
-       The Redact tool is hidden, since true redaction is v2's (spec §2.2). -->
-  <pdf:PdfViewer x:Name="Viewer"
-                 ViewMode="Continuous"
-                 SidebarMode="Thumbnails"
-                 AllowDocumentSaving="False"
-                 AutoSave="False"
-                 IsRedactToolVisible="False" />
+  <DockPanel x:Name="DocumentPanel">
+    <!-- A Healdan copy's bar (spec §6.1, §6.9): read-only, the Helper away, or Healdan support off. -->
+    <Border x:Name="Bar" DockPanel.Dock="Top" IsVisible="False" Padding="12,8" Background="#26808080">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="BarText" VerticalAlignment="Center" TextWrapping="Wrap" />
+        <Button x:Name="BarButton" Grid.Column="1" Margin="12,0,0,0" IsVisible="False" Click="OnBarButton" />
+      </Grid>
+    </Border>
+    <!-- Every save goes through DocumentWindow.SaveToAsync, which writes the markup author (spec §16 Decision 1), so the
+         PdfViewer's own saving is off. AutoSave stays off too (spec §6.4): each edit would otherwise become a save.
+         The Redact tool is hidden, since true redaction is v2's (spec §2.2). -->
+    <pdf:PdfViewer x:Name="Viewer"
+                   ViewMode="Continuous"
+                   SidebarMode="Thumbnails"
+                   AllowDocumentSaving="False"
+                   AutoSave="False"
+                   IsRedactToolVisible="False" />
+  </DockPanel>
 </Window>

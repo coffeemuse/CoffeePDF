@@ -87,4 +87,30 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(again.HealdanEnabled);
         Assert.Equal("Test Reviewer", again.MarkupAuthor);
     }
+
+    [Fact]
+    public void Whether_the_first_launch_asked_is_kept_beside_Healdan_support()
+    {
+        var store = new SettingsStore(_dir);
+        Assert.False(store.HealdanAsked);
+
+        store.HealdanAsked = true;
+
+        Assert.True(JsonNode.Parse(File.ReadAllText(store.FilePath))!["healdan"]!["asked"]!.GetValue<bool>());
+        Assert.True(new SettingsStore(_dir).HealdanAsked);
+        Assert.False(new SettingsStore(_dir).HealdanEnabled);
+    }
+
+    [Fact]
+    public void Changing_Healdan_support_tells_whoever_follows_it_after_its_kept()
+    {
+        var store = new SettingsStore(_dir);
+        var seen = new List<bool>();
+        store.HealdanEnabledChanged += (_, _) => seen.Add(new SettingsStore(_dir).HealdanEnabled);
+
+        store.HealdanEnabled = true;
+        store.HealdanEnabled = false;
+
+        Assert.Equal(new[] { true, false }, seen);
+    }
 }

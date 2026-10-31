@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using CoffeePdf.Core.Settings;
@@ -6,10 +7,7 @@ using CoffeePdf.Platform;
 
 namespace CoffeePdf.Windows;
 
-/// <summary>
-/// Settings (spec §5): the Markup author, and the Default PDF app. Healdan support joins it in Phase 2, when it does
-/// something. Each change is kept at once.
-/// </summary>
+/// <summary>Settings (spec §5): the Markup author, Healdan support, and the Default PDF app. Each change is kept at once.</summary>
 public partial class SettingsWindow : Window
 {
     private readonly IDefaultPdfApp? _defaultApp;
@@ -42,6 +40,41 @@ public partial class SettingsWindow : Window
                 // The typed text stays in the box, and the store keeps its last good value.
             }
         };
+        HealdanBox.IsChecked = store.HealdanEnabled;
+        var reverting = false;
+        // Shows what the store keeps, without writing that again.
+        void ShowKept()
+        {
+            reverting = true;
+            try
+            {
+                HealdanBox.IsChecked = store.HealdanEnabled;
+            }
+            finally
+            {
+                reverting = false;
+            }
+        }
+        HealdanBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != ToggleButton.IsCheckedProperty || reverting)
+                return;
+            try
+            {
+                store.HealdanEnabled = HealdanBox.IsChecked == true; // the windows follow through HealdanEnabledChanged
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Unlike the author, this switch decides where documents open and save, so the box must not show a state the
+                // app isn't in: it goes back to what the store keeps.
+                ShowKept();
+            }
+        };
+        // Support changed elsewhere while Settings is open, as by a window's bar or the first launch's question: the box
+        // follows, until Settings closes.
+        EventHandler follow = (_, _) => ShowKept();
+        store.HealdanEnabledChanged += follow;
+        Closed += (_, _) => store.HealdanEnabledChanged -= follow;
         DefaultAppSection.IsVisible = defaultApp.IsSupported;
         ShowDefaultApp();
     }

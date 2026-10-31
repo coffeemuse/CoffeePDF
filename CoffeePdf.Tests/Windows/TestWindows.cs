@@ -1,4 +1,6 @@
+using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Files;
+using CoffeePdf.Core.Helper;
 using CoffeePdf.Windows;
 
 namespace CoffeePdf.Tests.Windows;
@@ -17,6 +19,19 @@ internal static class TestWindows
     {
         var (window, errors) = Show();
         await Viewers.ShowAndLoadAsync(window.Viewer, () => window.Load(path));
+        return (window, errors);
+    }
+
+    /// <summary>
+    /// Shows a DocumentWindow with <paramref name="path"/> loaded through <paramref name="healdan"/>, such as a fake
+    /// Helper's (FakeHelper.Link), collecting the errors it would show, and waits until the window has its mode.
+    /// </summary>
+    public static async Task<(DocumentWindow Window, List<string> Errors)> OpenAsync(string path, HealdanLink healdan)
+    {
+        var (window, errors) = Show();
+        window.Healdan = healdan;
+        await Viewers.ShowAndLoadAsync(window.Viewer, () => window.Load(path));
+        await WaitForAsync(() => window.Document?.Mode != DocumentMode.Asking);
         return (window, errors);
     }
 

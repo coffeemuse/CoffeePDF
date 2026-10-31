@@ -2,7 +2,8 @@ using CoffeePdf.Core.Settings;
 
 namespace CoffeePdf.Core.Tests.Settings;
 
-/// <summary>One class, since its tests change environment variables and xUnit runs a class's tests one at a time.</summary>
+/// <summary>In one collection with the other tests that change environment variables, which xUnit runs one at a time.</summary>
+[Collection("Environment variables")]
 public sealed class SettingsLocationTests : IDisposable
 {
     private readonly string? _override = Environment.GetEnvironmentVariable(SettingsLocation.OverrideVariable);

@@ -5,7 +5,11 @@
   Mac are done, and the owner answered its decisions on 2026-10-30 (the spec's §16). Phase 1 is built (2026-10-30,
   [plan](superpowers/plans/2026-10-30-phase-1-standalone-app.md)), and the owner's checks on the Mac passed on
   2026-10-30, four after fixes.
-  Its findings are in the spec's §16 (Phase 1).
+  Its findings are in the spec's §16 (Phase 1). Phase 2 is built (2026-10-31,
+  [plan](superpowers/plans/2026-10-30-phase-2-healdan-in-coffeepdf.md)), and the owner's checks on the Mac passed on
+  2026-10-31, one after a fix.
+  The owner answered its questions on 2026-10-30 (the spec's §16, Phase 2's questions), and its findings are in the
+  spec's §16 (Phase 2).
   - The first signed, notarised pre-release, `v0.0.1-spike4`, passed Gatekeeper on 2026-10-30
     ([Releasing](RELEASING.md)).
   - The two checks that need Acrobat are best effort, in
@@ -17,7 +21,7 @@
 |---|---|---|
 | 0. Foundation spike | The solution, CI, the licence key, a window that shows a PDF, a signed and notarised package; the spec's §14 checks | built 2026-10-29; keyed run and the owner's checks on the Mac done 2026-10-29, except the Acrobat checks (best effort, issue #3); decisions answered 2026-10-30; first notarised pre-release `v0.0.1-spike4` passed Gatekeeper 2026-10-30; findings in the spec's §16 |
 | 1. Standalone app | Viewing, markup (with its author written through PDFium), forms, printing, Preferences, Open Recent, the default PDF app | built 2026-10-30; the owner's checks on the Mac passed 2026-10-30, four after fixes; findings in the spec's §16 |
-| 2. Healdan in CoffeePDF | The channel client, the window modes and the flows of spec §6, against a fake Helper | not started |
+| 2. Healdan in CoffeePDF | The channel client, the window modes and the flows of spec §6, against a fake Helper | built 2026-10-31; the owner's checks on the Mac passed 2026-10-31, one after a fix; the owner's questions answered 2026-10-30; findings in the spec's §16 |
 | 3. Healdan's milestone | Spec §4.4, through its own spec in Healdan's repository, including the Helper's watch handling a save by rename | not started |
 | 4. Acceptance | Spec §2.5 on the owner's Mac against the owner's server, then v1.0 | not started |
 

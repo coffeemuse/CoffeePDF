@@ -6,7 +6,7 @@ namespace CoffeePdf.Core.Settings;
 
 /// <summary>
 /// The preferences (spec §5), in <c>settings.json</c>. The Helper reads <c>healdan.enabled</c> from it (§4.4 item 5), so
-/// its shape is a contract: <c>{ "healdan": { "enabled": false }, "markup": { "author": "…" } }</c>. Keys this version
+/// its shape is a contract: <c>{ "healdan": { "enabled": false, "asked": true }, "markup": { "author": "…" } }</c>. Keys this version
 /// doesn't know are kept. A file that can't be read gives the defaults, and the next change replaces it.
 /// </summary>
 public sealed class SettingsStore(string folder)
@@ -15,11 +15,25 @@ public sealed class SettingsStore(string folder)
 
     public string FilePath { get; } = Path.Combine(folder, "settings.json");
 
-    /// <summary>Healdan support (§5), off by default. Phase 1 only keeps it, and Phase 2 acts on it.</summary>
+    /// <summary>Raised after Healdan support changes here, once the file has it, so the windows can follow (spec §5).</summary>
+    public event EventHandler? HealdanEnabledChanged;
+
+    /// <summary>Healdan support (§5), off by default.</summary>
     public bool HealdanEnabled
     {
-        get => Load()["healdan"] is JsonObject healdan && healdan["enabled"] is JsonValue value && value.TryGetValue(out bool enabled) && enabled;
-        set => Change(root => Section(root, "healdan")["enabled"] = value);
+        get => HealdanFlag("enabled");
+        set
+        {
+            Change(root => Section(root, "healdan")["enabled"] = value);
+            HealdanEnabledChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Whether the first launch has asked to use CoffeePDF with Healdan (§5), so it asks once.</summary>
+    public bool HealdanAsked
+    {
+        get => HealdanFlag("asked");
+        set => Change(root => Section(root, "healdan")["asked"] = value);
     }
 
     /// <summary>The Markup author the user set (§5), or null to follow the macOS full name. Setting it blank clears it.</summary>
@@ -37,6 +51,9 @@ public sealed class SettingsStore(string folder)
                 markup["author"] = value.Trim();
         });
     }
+
+    private bool HealdanFlag(string key) =>
+        Load()["healdan"] is JsonObject healdan && healdan[key] is JsonValue value && value.TryGetValue(out bool flag) && flag;
 
     private JsonObject Load()
     {

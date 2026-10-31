@@ -7,7 +7,10 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Files;
+using CoffeePdf.Core.Helper;
+using CoffeePdf.Core.Logging;
 using CoffeePdf.Core.Settings;
+using CoffeePdf.Dialogs;
 using CoffeePdf.Platform;
 using CoffeePdf.Windows;
 
@@ -29,6 +32,10 @@ public partial class App : Application
 
     private bool _quitConfirmed; // the windows with changes have been asked: the shutdown now goes through
 
+    private bool _quitting; // a quit is running: it ends CoffeePDF itself, and another request starts nothing
+
+    private readonly List<Task> _releases = []; // the closed windows' Released, so a quit waits for each, whoever closed it
+
     /// <summary>The running app, from anywhere in it.</summary>
     public static new App Current => (App)Application.Current!;
 
@@ -38,17 +45,50 @@ public partial class App : Application
     /// <summary>File › Open Recent's list (spec §2.1).</summary>
     public RecentDocuments Recent { get; private set; } = null!;
 
+    /// <summary>CoffeePDF's log (spec §6.9).</summary>
+    public CoffeeLog Log { get; private set; } = null!;
+
+    /// <summary>Healdan support, the Helper's folders and its channel (spec §5, §9). A test's window gets a fake Helper's instead.</summary>
+    public HealdanLink Healdan { get; private set; } = null!;
+
     /// <summary>The document windows open.</summary>
     internal IReadOnlyList<DocumentWindow> Windows => _windows;
 
     /// <summary>The name each save writes into new markups: the one set in Settings, else the macOS full name (spec §5).</summary>
     public string MarkupAuthor => Settings.MarkupAuthor ?? _fullName.Value;
 
+    /// <summary>Whether the Healdan Helper is installed, for the first launch's question (spec §5).</summary>
+    internal IHelperInstall HelperInstall { get; set; } = new MacHelperInstall();
+
+    private bool _healdanQuestionDue = true; // the first window this run shows asks, if the question is still to ask
+
+    /// <summary>
+    /// At the first launch with the Helper installed, asks once over <paramref name="owner"/> whether to use CoffeePDF
+    /// with Healdan (spec §5). Turning support on raises <see cref="SettingsStore.HealdanEnabledChanged"/>, which the
+    /// windows follow.
+    /// </summary>
+    private async Task AskAboutHealdanAsync(Window owner)
+    {
+        try
+        {
+            await FirstLaunch.AskAboutHealdanAsync(Settings, HelperInstall.IsInstalled, async () =>
+                await MessageDialog.ShowAsync(owner, "Use CoffeePDF with Healdan?",
+                    "CoffeePDF can open and save documents in Healdan, through Healdan Helper. You can change this in Settings.",
+                    ["Not Now", "Use with Healdan"]) == "Use with Healdan");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // settings.json can't be written: the question comes again at the next launch, and nothing else is lost.
+        }
+    }
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
         Settings = new SettingsStore(SettingsLocation.Folder());
         Recent = new RecentDocuments(SettingsLocation.Folder());
+        Log = new CoffeeLog(CoffeeLog.Folder());
+        Healdan = new HealdanLink(Settings, HelperFolders.ForThisUser(), Log);
 
         // The app menu. macOS adds Services, Hide and Quit after these. Avalonia's own About Avalonia goes once the app
         // sets a menu, so About CoffeePDF opens macOS's About panel instead.
@@ -101,7 +141,8 @@ public partial class App : Application
             Recent.Remove(path); // a recent file that's gone, or no longer a PDF
             return;
         }
-        Recent.Add(path);
+        if (!Healdan.Folders.HoldsCopy(path))
+            Recent.Add(path); // Healdan's copies stay out (spec §6.10): the Helper deletes each once it's checked in
         var choice = WindowChoice.For(_windows.Select(w => w.FilePath).ToList(), path);
         switch (choice.Action)
         {
@@ -174,19 +215,57 @@ public partial class App : Application
 
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
-        if (_quitConfirmed || !_windows.Any(w => w.HasUnsavedChanges))
+        // Windows with changes ask first, and every copy is let go before CoffeePDF ends (spec §6.8): also one a closed
+        // window is still letting go, and a quit running already, which calls Shutdown itself when it is done.
+        var mustWait = _quitting || _releases.Any(r => !r.IsCompleted) || _windows.Any(w => w.HasUnsavedChanges || w.HoldsCopy);
+        if (_quitConfirmed || !mustWait)
             return;
         e.Cancel = true;
+        if (_quitting)
+            return;
+        _quitting = true;
         _ = QuitAsync(sender as IClassicDesktopStyleApplicationLifetime);
     }
 
     private async Task QuitAsync(IClassicDesktopStyleApplicationLifetime? desktop)
     {
-        if (!await CloseAllEditedAsync(() => _windows))
-            return;
-        // Nothing awaits between the last check and the shutdown, so no window can be edited in between.
-        _quitConfirmed = true;
-        desktop?.Shutdown();
+        try
+        {
+            if (!await CloseAllAndWaitAsync(() => _windows, () => [.. _releases]))
+                return;
+            _quitConfirmed = true;
+            desktop?.Shutdown();
+        }
+        finally
+        {
+            _quitting = false;
+        }
+    }
+
+    /// <summary>
+    /// For a quit: closes every window, asking those with changes in turn (spec §6.8), and waits until the Helper has
+    /// heard of every copy that closed, <paramref name="releases"/> being the closed windows' <c>Released</c>, those
+    /// closed by the prompts included. Returns false if a window stayed open.
+    /// </summary>
+    internal static async Task<bool> CloseAllAndWaitAsync(Func<IReadOnlyList<DocumentWindow>> windows, Func<IReadOnlyList<Task>> releases)
+    {
+        if (!await CloseAllEditedAsync(windows))
+            return false;
+        // No window still open has changes, and nothing awaits before they're closed, so none can be edited in between.
+        await CloseAndLetGoAsync([.. windows()]);
+        await Task.WhenAll(releases());
+        return true;
+    }
+
+    /// <summary>
+    /// Closes <paramref name="windows"/>, which have no unsaved changes, and waits until each has let its copy go, so
+    /// the Helper hears of each before CoffeePDF ends (spec §6.8). Each <c>/v1/closed</c> waits 10 seconds at most.
+    /// </summary>
+    internal static async Task CloseAndLetGoAsync(IReadOnlyList<DocumentWindow> windows)
+    {
+        foreach (var window in windows)
+            window.Close();
+        await Task.WhenAll(windows.Select(w => w.Released));
     }
 
     private void OpenEmptyWindowIfNone()
@@ -198,8 +277,18 @@ public partial class App : Application
     private DocumentWindow NewWindow()
     {
         var window = new DocumentWindow();
-        window.Closed += (_, _) => _windows.Remove(window);
+        window.Closed += (_, _) =>
+        {
+            _windows.Remove(window);
+            _releases.RemoveAll(r => r.IsCompleted);
+            _releases.Add(window.Released);
+        };
         _windows.Add(window);
+        if (_healdanQuestionDue)
+        {
+            _healdanQuestionDue = false;
+            window.Opened += async (_, _) => await AskAboutHealdanAsync(window);
+        }
         return window;
     }
 }

@@ -18,6 +18,7 @@
     <Compile Include="../CoffeePdf.Core.Tests/Fixtures/MinimalPdf.cs" Link="Fixtures/MinimalPdf.cs" />
     <Compile Include="../CoffeePdf.Core.Tests/Fixtures/EncryptedPdf.cs" Link="Fixtures/EncryptedPdf.cs" />
     <Compile Include="../CoffeePdf.Core.Tests/Fixtures/AnnotatedPdf.cs" Link="Fixtures/AnnotatedPdf.cs" />
+    <Compile Include="../CoffeePdf.Core.Tests/Fakes/FakeHelper.cs" Link="Fakes/FakeHelper.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- The app's tests run on macOS (spec §10), so Unix-only calls such as File.SetUnixFileMode are fine. -->
