@@ -316,15 +316,19 @@ public partial class DocumentWindow : Window
     /// <summary>Save As (⇧⌘S): the Mac's Save panel. Task 13 sends it to the Helper first.</summary>
     public Task<bool> SaveAsAsync() => SaveAsWithPanelAsync();
 
-    /// <summary>The Mac's own Save panel: writes the document to the file picked, and the window moves to it.</summary>
+    /// <summary>
+    /// The Mac's own Save panel: writes the document to the file picked, and the window moves to it. A closed window shows
+    /// none.
+    /// </summary>
     internal async Task<bool> SaveAsWithPanelAsync() =>
-        Viewer.HasDocument && await PickSaveTarget(Path.GetFileName(_path)) is { } target && await SaveToAsync(target);
+        !_closed && Viewer.HasDocument && await PickSaveTarget(Path.GetFileName(_path)) is { } target && await SaveToAsync(target);
 
     /// <summary>
     /// Save to Healdan for a local PDF, and Save as New Document for a copy (spec §6.6): the Helper's Save window, then
     /// the PDF with its markups written to the answer's temporary file, filed, and the window moved to the new copy.
-    /// The Helper's way back shows the Mac's Save panel, as does a Helper that doesn't answer; an error is shown first.
-    /// Returns whether the document was saved.
+    /// The Helper's way back shows the Mac's Save panel, as does a Helper that doesn't answer its Save window, and a filing
+    /// it refuses; an error is shown first. A Helper that doesn't answer the filing may have filed the document, so
+    /// the user is told, and no panel is shown. Returns whether the document was saved.
     /// </summary>
     internal async Task<bool> SaveNewAsync()
     {
@@ -362,17 +366,42 @@ public partial class DocumentWindow : Window
             TryDeleteTemporary(temp); // the Helper deletes it only after /v1/file
             return false;
         }
-        if (await FileAndMoveAsync(answer, original, temp))
-            return true;
-        return await SaveAsWithPanelAsync();
+        var filing = await FileAndMoveAsync(answer, original);
+        if (_closeWhenMoved)
+        {
+            // A close came during the filing, and goes through now that the move is over: the Mac's Save panel isn't shown
+            // over it. The close asks about any changes the window still has.
+            _closeWhenMoved = false;
+            Close();
+            return filing == Filing.Filed;
+        }
+        return filing switch
+        {
+            Filing.Filed => true,
+            Filing.Refused => await SaveAsWithPanelAsync(),
+            _ => false,
+        };
+    }
+
+    /// <summary>How filing the PDF written for Healdan ended (spec §6.6 step 2).</summary>
+    private enum Filing
+    {
+        /// <summary>Healdan has the document.</summary>
+        Filed,
+
+        /// <summary>The Helper refused it, and has told the user why.</summary>
+        Refused,
+
+        /// <summary>The Helper didn't answer, so Healdan may have the document already.</summary>
+        Unknown,
     }
 
     /// <summary>
-    /// Files the PDF written to <paramref name="temp"/>, and moves the window to the new copy (spec §6.6 steps 2 and
-    /// 3), taking no input meanwhile. Returns whether it was filed. When it wasn't, the window is as it was, with its
-    /// changes unsaved.
+    /// Files the PDF written for the answer, and moves the window to the new copy (spec §6.6 steps 2 and 3), taking no
+    /// input meanwhile. Returns how the filing ended. When it wasn't filed, the window is as it was, with its changes
+    /// unsaved.
     /// </summary>
-    private async Task<bool> FileAndMoveAsync(SaveNewAnswer answer, string? original, string temp)
+    private async Task<Filing> FileAndMoveAsync(SaveNewAnswer answer, string? original)
     {
         _moving = true;
         DocumentPanel.IsEnabled = false;
@@ -385,51 +414,58 @@ public partial class DocumentWindow : Window
             }
             catch (HelperUnreachableException)
             {
-                TryDeleteTemporary(temp);
+                // Every failure of the call arrives here, the time limit and a reset after the request went among them,
+                // so the Helper may have filed the document: the file written for it is left to the Helper, and the Mac's
+                // Save panel isn't offered, which would file a second copy.
                 OnHelperAway();
-                return false;
+                await TellAsync("Healdan Helper didn’t answer while filing the document.", "It may be in Healdan already. Check there before you save it again.");
+                return Filing.Unknown;
             }
             catch (HelperErrorException e)
             {
                 // The Helper has told the user why, in a notification, and deleted the file (the Desktop Clients page).
                 Healdan.Log.Warn($"Filing: {e.Message}");
-                return false;
+                return Filing.Refused;
             }
             if (!filed.Known || filed.Path.Length == 0)
             {
                 await TellAsync("The document is filed in Healdan, but Healdan Helper gave no copy to open.",
                     "Close this window without saving, and open the document from Healdan.");
-                return true;
+                return Filing.Filed;
             }
             await MoveToCopyAsync(filed);
-            return true;
+            return Filing.Filed;
         }
         finally
         {
             _moving = false;
             DocumentPanel.IsEnabled = true;
-            if (_closeWhenMoved)
-                Close();
         }
     }
 
     /// <summary>
     /// Moves the window to the copy Healdan filed (spec §6.6 step 3), in its order: reopens the file there, writes its
     /// lock file (as the PdfViewer loads it), lets the old copy go, if there was one, and tells the Helper the window
-    /// has adopted the new copy, whose file as it is now is the starting point.
+    /// has adopted the new copy, whose file as it is now is the starting point. The new copy is encrypted as the old
+    /// file was, so the window keeps the password. A close during the move ends the wait for the file to load, which a
+    /// password prompt could hold for ever.
     /// </summary>
     private async Task MoveToCopyAsync(CopyState filed)
     {
         StopFollowing();
         var (oldPath, oldDocument, oldLock) = (_path, _document, _lockHeld);
+        var password = Viewer.Password ?? _typedPassword;
         _lockHeld = false;
         var loaded = _loadWaiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         Show(filed.Path, WindowDocument.Opened(filed.Path, healdan: true, inCopies: true).Answered(filed));
+        _typedPassword = password; // Show cleared it, and the new copy's saves need it to write the author
+        if (_closeWhenMoved)
+            loaded.TrySetResult(false); // a close came during the filing, before there was a load to end
         var shown = await loaded.Task;
         _loadWaiter = null;
         await LetGoAsync(oldPath, oldDocument, oldLock);
         if (!shown)
-            return; // the PdfViewer couldn't open the new copy, and says so in the window
+            return; // the PdfViewer couldn't open the new copy, and says so in the window, or a close ended the wait
         try
         {
             var adopted = await Healdan.Channel.AdoptedAsync(filed.Path);
@@ -520,9 +556,11 @@ public partial class DocumentWindow : Window
         base.OnClosing(e);
         if (_moving)
         {
-            // The window takes no input until it's the new copy's (spec §6.6 step 3); the close follows then.
+            // The window takes no input until it's the new copy's (spec §6.6 step 3); the close follows then, and the wait
+            // for the new copy to load ends, so the close can't wait on a password prompt.
             e.Cancel = true;
             _closeWhenMoved = true;
+            _loadWaiter?.TrySetResult(false);
             return;
         }
         if (_closeConfirmed || !HasUnsavedChanges)

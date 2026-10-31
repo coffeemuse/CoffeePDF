@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Helper;
 using CoffeePdf.Core.Locks;
@@ -53,6 +54,9 @@ public sealed class SaveToHealdanTests : IDisposable
         await window.CloseWithPromptAsync();
         await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
     }
+
+    private static T? Visible<T>(Window window, Func<T, bool> match) where T : Control =>
+        window.GetVisualDescendants().OfType<T>().FirstOrDefault(c => c.IsEffectivelyVisible && match(c));
 
     [PdfViewerFact]
     public async Task Save_to_Healdan_files_a_local_pdf_and_the_window_moves_to_its_copy()
@@ -278,5 +282,233 @@ public sealed class SaveToHealdanTests : IDisposable
         Assert.Equal("Save as New Document…", label);
         Assert.Equal(Filed, shown);
         Assert.Equal(old, (string?)Assert.Single(_helper.CallsTo(ChannelRoutes.SaveNew))["path"]);
+    }
+
+    [PdfViewerFact]
+    public async Task A_close_during_a_failed_filing_asks_once_and_the_next_save_to_Healdan_doesnt_close_the_window()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var filings = 0;
+        _helper.Answer(ChannelRoutes.File, async body =>
+        {
+            if (Interlocked.Increment(ref filings) == 1)
+            {
+                await gate.Task; // the first filing waits, so the close comes during it, and then fails
+                throw new InvalidOperationException();
+            }
+            var temp = (string)body["tempPath"]!; // later ones file as the fake does
+            var path = _helper.AddCopy("Report", 1, "1", pdf: File.ReadAllBytes(temp));
+            File.Delete(temp);
+            return FakeHelper.Json(_helper.StateOf(path));
+        });
+        var local = Local();
+
+        var (first, asked, panel, stillOpen, second, shown, openAfterSecond) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(local, _helper.Link());
+            var (questions, shownPanel) = (0, false);
+            window.AskToSave = () =>
+            {
+                questions++;
+                return Task.FromResult(SaveChoice.Cancel);
+            };
+            window.PickSaveTarget = _ =>
+            {
+                shownPanel = true;
+                return Task.FromResult<string?>(null);
+            };
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var flow = window.SaveNewAsync();
+            await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.File).Count == 1);
+            window.Close(); // during the filing: it waits until the filing is over
+            gate.SetResult();
+            var firstResult = await flow;
+            var (stayed, asks, panelShown) = (window.IsVisible, questions, shownPanel);
+            var secondResult = await window.SaveNewAsync();
+            var state = (firstResult, asks, panelShown, stayed, secondResult, window.FilePath, window.IsVisible);
+            await CloseAsync(window);
+            return state;
+        });
+
+        Assert.False(first);
+        Assert.Equal(1, asked); // the deferred close asks, since the window has changes its file lacks
+        Assert.False(panel);    // and the Mac's Save panel isn't shown over that question
+        Assert.True(stillOpen); // Cancel left the window open
+        Assert.True(second);
+        Assert.Equal(Filed, shown);
+        Assert.True(openAfterSecond); // the close was used up: a later save doesn't close the window
+    }
+
+    [PdfViewerFact]
+    public async Task A_close_during_a_refused_filing_closes_the_window_with_no_Save_panel_after_it()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var old = _helper.AddCopy("Settlement Agreement", 1234, "2.1", readOnly: true, holdBy: "Zoë Q. Reviewer");
+        _helper.Answer(ChannelRoutes.File, async _ =>
+        {
+            await gate.Task;
+            throw new InvalidOperationException();
+        });
+
+        var (saved, panel, open) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(old, _helper.Link());
+            var shownPanel = false;
+            window.PickSaveTarget = _ =>
+            {
+                shownPanel = true;
+                return Task.FromResult<string?>(null);
+            };
+            var flow = window.SaveNewAsync();
+            await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.File).Count == 1);
+            window.Close();
+            gate.SetResult();
+            var result = await flow;
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            return (result, shownPanel, window.IsVisible);
+        });
+
+        Assert.False(saved);
+        Assert.False(panel);
+        Assert.False(open);
+        Assert.Equal(old, (string?)Assert.Single(_helper.CallsTo(ChannelRoutes.Closed))["path"]); // told once, by the close
+    }
+
+    [PdfViewerFact]
+    public async Task A_window_closed_while_the_Helpers_Save_window_was_open_shows_no_Save_panel_when_the_Helper_fails()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.SaveNew, async _ =>
+        {
+            await gate.Task;
+            throw new InvalidOperationException();
+        });
+        var local = Local();
+
+        var (saved, panel) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(local, _helper.Link());
+            var shownPanel = false;
+            window.PickSaveTarget = _ =>
+            {
+                shownPanel = true;
+                return Task.FromResult<string?>(null);
+            };
+            var flow = window.SaveNewAsync();
+            await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.SaveNew).Count == 1);
+            window.Close();
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            gate.SetResult();
+            return (await flow, shownPanel);
+        });
+
+        Assert.False(saved);
+        Assert.False(panel);
+    }
+
+    [PdfViewerFact]
+    public async Task An_encrypted_pdf_keeps_its_password_across_the_move_so_the_new_copys_markups_get_the_author()
+    {
+        var local = Path.Combine(_dir, "Report.pdf");
+        File.WriteAllBytes(local, EncryptedPdf.Build());
+
+        var (saved, asked, resaved) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = TestWindows.Show();
+            window.Healdan = _helper.Link();
+            window.Load(local);
+            TextBox? box = null;
+            await TestWindows.WaitForAsync(() => (box = Visible<TextBox>(window, b => b.Name == "PART_PasswordTextBox")) is not null);
+            box!.Text = EncryptedPdf.UserPassword;
+            Visible<Button>(window, b => Equals(b.Content, "Unlock"))!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await TestWindows.WaitForAsync(() => window.Viewer.HasDocument);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            // The PdfViewer's prompt would hold the move for ever, so it's limited: the test fails instead of hanging.
+            var moved = await window.SaveNewAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            var prompted = Visible<TextBox>(window, b => b.Name == "PART_PasswordTextBox") is not null;
+            await window.Viewer.AddStickyNoteAsync(0, 200, 200, "After the move");
+            var second = await window.SaveAsync();
+            await CloseAsync(window);
+            return (moved, prompted, second);
+        });
+
+        Assert.True(saved);
+        Assert.False(asked); // the filed copy opened without the PdfViewer's password prompt
+        Assert.True(resaved);
+        var notes = PdfAnnotations.Read(File.ReadAllBytes(Filed), 0, EncryptedPdf.UserPassword);
+        Assert.Equal(2, notes.Count);
+        Assert.All(notes, n => Assert.Equal(TestWindows.Author, n.Author));
+    }
+
+    [PdfViewerFact]
+    public async Task A_close_during_a_move_that_waits_on_a_password_prompt_ends_the_wait_and_closes_the_window()
+    {
+        // The Helper files an encrypted copy of a plain PDF, so the window has no password for it and the PdfViewer asks.
+        _helper.Answer(ChannelRoutes.File, body =>
+        {
+            File.Delete((string)body["tempPath"]!);
+            var path = _helper.AddCopy("Report", 1, "1", pdf: EncryptedPdf.Build());
+            return Task.FromResult<JsonNode>(FakeHelper.Json(_helper.StateOf(path)));
+        });
+        var local = Local();
+
+        var (filed, asking, open) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(local, _helper.Link());
+            var flow = window.SaveNewAsync();
+            await TestWindows.WaitForAsync(() => Visible<TextBox>(window, b => b.Name == "PART_PasswordTextBox") is not null);
+            var waiting = !window.DocumentPanel.IsEnabled;
+            window.Close();
+            var result = await flow.WaitAsync(TimeSpan.FromSeconds(10));
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            return (result, waiting, window.IsVisible);
+        });
+
+        Assert.True(filed);
+        Assert.True(asking); // the move was waiting on the prompt, with the window taking no input
+        Assert.False(open);
+        Assert.Equal(new[] { "save-new", "file", "closed" }, _helper.Routes);
+        Assert.Equal(Filed, (string?)Assert.Single(_helper.CallsTo(ChannelRoutes.Closed))["path"]);
+    }
+
+    [PdfViewerFact]
+    public async Task A_filing_the_Helper_doesnt_answer_may_have_gone_through_so_no_Save_panel_and_the_file_stays()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var old = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        _helper.Answer(ChannelRoutes.File, async _ =>
+        {
+            await gate.Task; // not answered within the limit below
+            return new JsonObject();
+        });
+        var waits = new Dictionary<ChannelWait, TimeSpan>(HelperChannel.DefaultWaits) { [ChannelWait.Filing] = TimeSpan.FromMilliseconds(300) };
+        var temp = Path.Combine(_helper.Folders.Temp, "save-new.pdf");
+
+        var (saved, shown, unsaved, mode, panel, kept, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(old, _helper.Link(waits: waits));
+            var shownPanel = false;
+            window.PickSaveTarget = _ =>
+            {
+                shownPanel = true;
+                return Task.FromResult<string?>(null);
+            };
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var result = await window.SaveNewAsync();
+            var state = (result, window.FilePath, window.HasUnsavedChanges, window.Document?.Mode, shownPanel, File.Exists(temp), errorList.ToList());
+            await CloseAsync(window);
+            gate.SetResult();
+            return state;
+        });
+
+        Assert.False(saved);
+        Assert.Equal(old, shown);
+        Assert.True(unsaved);
+        Assert.Equal(DocumentMode.HelperAway, mode);
+        Assert.False(panel);
+        Assert.True(kept); // the Helper may have filed it, and deletes it itself
+        Assert.Equal("Healdan Helper didn’t answer while filing the document. It may be in Healdan already. Check there before you save it again.",
+            Assert.Single(errors));
+        Assert.Equal(old, (string?)Assert.Single(_helper.CallsTo(ChannelRoutes.Closed))["path"]);
     }
 }
