@@ -47,6 +47,7 @@ public partial class DocumentWindow : Window
     private bool _closed;              // the window has closed: a flow still running stops short
     private bool _askingHelper;        // a /v1/state for the file is on its way
     private DateTimeOffset _openedAt;  // when the file was shown, for the lock file
+    private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public DocumentWindow()
     {
@@ -102,6 +103,13 @@ public partial class DocumentWindow : Window
             _healdan.Settings.HealdanEnabledChanged -= OnHealdanSupportChanged;
         };
         ApplyMode();
+        Closed += async (_, _) =>
+        {
+            var (path, document, lockHeld) = (_path, _document, _lockHeld);
+            _lockHeld = false;
+            await LetGoAsync(path, document, lockHeld);
+            _released.TrySetResult();
+        };
     }
 
     /// <summary>The file shown, or null while the window is empty. Save As moves it to the new file.</summary>
@@ -122,6 +130,12 @@ public partial class DocumentWindow : Window
 
     /// <summary>The file's mode and what the Helper last said of it, or null while the window is empty.</summary>
     internal WindowDocument? Document => _document;
+
+    /// <summary>Done once the closed window has let its copy go (spec §6.8), and at once for a window without one.</summary>
+    internal Task Released => _released.Task;
+
+    /// <summary>Whether the window has a copy to let go when it closes.</summary>
+    internal bool HoldsCopy => _lockHeld || _document?.TellsHelper == true;
 
     /// <summary>Whether the document has changes its file doesn't.</summary>
     public bool HasUnsavedChanges => Viewer.HasDocument && (Viewer.IsDirty || _editedSinceSave || _saveFailed || _savesRunning > 0);
@@ -401,16 +415,45 @@ public partial class DocumentWindow : Window
         }
     }
 
-    /// <summary>After a save that worked: one that moved the window to another file takes that file's mode (spec §6.1).</summary>
+    /// <summary>
+    /// After a save that worked: one that moved the window to another file lets the copy it left go, as a close would
+    /// (spec §6.6 step 3, §6.8), and takes the new file's mode (§6.1).
+    /// </summary>
     private void AfterSave(string? previous)
     {
         if (_path == previous)
             return;
+        var (document, lockHeld) = (_document, _lockHeld);
+        _lockHeld = false;
+        _ = LetGoAsync(previous, document, lockHeld);
         _loads++; // an answer about the file the window left is dropped
         _document = WindowDocument.Opened(_path!, Healdan.Enabled, Healdan.Folders.HoldsCopy(_path!));
         ApplyMode();
         if (_document.Mode == DocumentMode.Asking)
             _ = AskHelperAsync();
+    }
+
+    /// <summary>
+    /// Lets a copy go (spec §6.8): removes its lock file, if the window wrote one, then tells the Helper with
+    /// <c>/v1/closed</c>, so it sends anything unsent, checks the document in and deletes the copy. It never throws: the
+    /// Helper watches the lock file too, and its next start closes a copy it wasn't told of (the Desktop Clients page).
+    /// </summary>
+    private async Task LetGoAsync(string? path, WindowDocument? document, bool lockHeld)
+    {
+        if (path is null)
+            return;
+        if (lockHeld)
+            CopyLock.TryRemove(path);
+        if (document?.TellsHelper != true)
+            return;
+        try
+        {
+            await Healdan.Channel.ClosedAsync(path);
+        }
+        catch (Exception e) when (e is HelperUnreachableException or HelperErrorException)
+        {
+            Healdan.Log.Info($"Healdan Helper wasn’t told a copy closed ({e.GetType().Name}); it watches the lock file too");
+        }
     }
 
     /// <summary>What the window allows in its mode (spec §6.1).</summary>

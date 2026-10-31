@@ -211,7 +211,8 @@ public partial class App : Application
 
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
-        if (_quitConfirmed || !_windows.Any(w => w.HasUnsavedChanges))
+        // Windows with changes ask first, and every copy is let go before CoffeePDF ends (spec §6.8).
+        if (_quitConfirmed || !_windows.Any(w => w.HasUnsavedChanges || w.HoldsCopy))
             return;
         e.Cancel = true;
         _ = QuitAsync(sender as IClassicDesktopStyleApplicationLifetime);
@@ -221,9 +222,21 @@ public partial class App : Application
     {
         if (!await CloseAllEditedAsync(() => _windows))
             return;
-        // Nothing awaits between the last check and the shutdown, so no window can be edited in between.
+        // No window still open has changes, and nothing awaits before they're closed, so none can be edited in between.
+        await CloseAndLetGoAsync([.. _windows]);
         _quitConfirmed = true;
         desktop?.Shutdown();
+    }
+
+    /// <summary>
+    /// Closes <paramref name="windows"/>, which have no unsaved changes, and waits until each has let its copy go, so
+    /// the Helper hears of each before CoffeePDF ends (spec §6.8). Each <c>/v1/closed</c> waits 10 seconds at most.
+    /// </summary>
+    internal static async Task CloseAndLetGoAsync(IReadOnlyList<DocumentWindow> windows)
+    {
+        foreach (var window in windows)
+            window.Close();
+        await Task.WhenAll(windows.Select(w => w.Released));
     }
 
     private void OpenEmptyWindowIfNone()
