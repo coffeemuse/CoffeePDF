@@ -452,6 +452,8 @@ public partial class DocumentWindow : Window
     /// <summary>Follows the save just written to the copy until Healdan has it (spec §6.4). A newer save takes over.</summary>
     private void Follow()
     {
+        if (_closed)
+            return; // a save that was still writing as the window closed: following ended with the window
         StopFollowing();
         var following = _following = new CancellationTokenSource();
         _savingToHealdan = true; // from the write on: the first answer can take 120 seconds
@@ -461,8 +463,15 @@ public partial class DocumentWindow : Window
 
     private async Task FollowAsync(string path, CancellationTokenSource following)
     {
-        await SaveFollower.FollowAsync(stop => Healdan.Channel.SavedAsync(path, stop), state => OnSavedAnswer(path, state), OnHelperAway,
-            Pause, following.Token);
+        try
+        {
+            await SaveFollower.FollowAsync(stop => Healdan.Channel.SavedAsync(path, stop), state => OnSavedAnswer(path, state), OnHelperAway,
+                Pause, following.Token);
+        }
+        catch (Exception e) // whatever else stops it: logged by type, and the title mustn't say a save is on its way for good
+        {
+            Healdan.Log.Warn($"Following a save stopped ({e.GetType().Name})");
+        }
         if (_following != following)
             return; // a newer save, a close or a move has taken over
         _following = null;
@@ -521,6 +530,8 @@ public partial class DocumentWindow : Window
             await TellAsync($"“{document.NameForHealdan}” couldn’t be saved as a new version.", e.Message);
             return false;
         }
+        if (_closed || _path != path)
+            return false; // the window closed, or moved to another file, while the Helper was answering
         if (HasUnsavedChanges)
             return await SaveAsync();
         Follow();

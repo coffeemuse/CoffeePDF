@@ -173,4 +173,85 @@ public sealed class HealdanSaveTests : IDisposable
         Assert.Equal(DocumentMode.HelperAway, mode);
         Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
     }
+
+    [PdfViewerFact]
+    public async Task A_follow_that_stops_on_an_error_stops_saying_the_save_is_on_its_way()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        _helper.Answer(ChannelRoutes.Saved, FakeHelper.Json(_helper.StateOf(copy) with { Pending = true }));
+
+        var (title, log) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+            window.Pause = (_, _) => throw new InvalidOperationException("Not an error the Helper answered");
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            await window.SaveAsync();
+            await TestWindows.WaitForAsync(() => window.Title == "Settlement Agreement #1234 v2.1");
+            var state = (window.Title, File.ReadAllText(window.Healdan.Log.FilePath));
+            await CloseAsync(window);
+            return state;
+        });
+
+        Assert.Equal("Settlement Agreement #1234 v2.1", title);
+        Assert.Contains("Following a save stopped (InvalidOperationException)", log);
+        Assert.DoesNotContain("Not an error", log); // by its type: its message could quote a file
+    }
+
+    [PdfViewerFact]
+    public async Task A_save_still_writing_as_the_window_closes_is_not_followed()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+
+        var (saved, title) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var held = TestWindows.HoldWrites(window);
+            var saving = window.SaveAsync();
+            try
+            {
+                await TestWindows.WaitForAsync(() => held.Reached);
+                await CloseAsync(window);
+            }
+            finally
+            {
+                held.Release();
+            }
+            // The save ends here, and a follow would have said so in the title as it began.
+            return (await saving, window.Title);
+        });
+
+        Assert.True(saved);
+        Assert.DoesNotContain("Saving to Healdan", title);
+        Assert.Empty(_helper.CallsTo(ChannelRoutes.Saved));
+    }
+
+    [PdfViewerFact]
+    public async Task Save_as_New_Version_saves_nothing_if_the_window_closes_while_the_Helper_answers()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        var asked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.NewVersion, async _ =>
+        {
+            asked.SetResult();
+            await answer.Task; // the Helper's answer waits, so the window closes before it comes
+            return new JsonObject();
+        });
+
+        var saved = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var asking = window.SaveAsNewVersionAsync();
+            await asked.Task;
+            await CloseAsync(window);
+            answer.SetResult();
+            return await asking;
+        });
+
+        Assert.False(saved);
+        Assert.Equal(new[] { "state", "new-version", "closed" }, _helper.Routes);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
+    }
 }
