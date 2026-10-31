@@ -44,6 +44,7 @@ public partial class DocumentWindow : Window
     private int _loads;                // counts the files shown, so an answer about an earlier one is dropped
     private bool _loaded;              // the PdfViewer has the file loaded
     private bool _lockHeld;            // this window wrote the copy's lock file (spec §6.8)
+    private bool _closed;              // the window has closed: a flow still running stops short
     private bool _askingHelper;        // a /v1/state for the file is on its way
     private DateTimeOffset _openedAt;  // when the file was shown, for the lock file
 
@@ -95,7 +96,11 @@ public partial class DocumentWindow : Window
                 _ = AskHelperAsync();
         };
         _healdan.Settings.HealdanEnabledChanged += OnHealdanSupportChanged;
-        Closed += (_, _) => _healdan.Settings.HealdanEnabledChanged -= OnHealdanSupportChanged;
+        Closed += (_, _) =>
+        {
+            _closed = true;
+            _healdan.Settings.HealdanEnabledChanged -= OnHealdanSupportChanged;
+        };
         ApplyMode();
     }
 
@@ -368,6 +373,8 @@ public partial class DocumentWindow : Window
         {
             _askingHelper = false;
         }
+        if (_closed)
+            return; // the window closed while the Helper was answering: there's nothing to show or lock
         if (load != _loads || _document is null)
             return; // the window has moved on to another file meanwhile
         _document = _document.Answered(state);
@@ -381,7 +388,7 @@ public partial class DocumentWindow : Window
     /// </summary>
     private void TakeLockIfEditable()
     {
-        if (_lockHeld || !_loaded || _path is null || _document?.HoldsLock != true)
+        if (_closed || _lockHeld || !_loaded || _path is null || _document?.HoldsLock != true)
             return;
         try
         {
