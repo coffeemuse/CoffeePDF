@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CoffeePdf.Core.Helper;
+using CoffeePdf.Core.Logging;
+using CoffeePdf.Core.Settings;
 using CoffeePdf.Tests.Fixtures;
 
 namespace CoffeePdf.Core.Tests.Fakes;
@@ -94,6 +96,17 @@ internal sealed class FakeHelper : IDisposable
     /// <summary>Answers again: <c>channel.json</c> names this channel, and this process as the Helper's.</summary>
     public void ComeBack() =>
         File.WriteAllText(Folders.ChannelFile, JsonSerializer.Serialize(new { port = Port, secret = Secret, pid = Environment.ProcessId }));
+
+    /// <summary>
+    /// CoffeePDF's link to this Helper: settings of its own, in the support folder, with Healdan support
+    /// <paramref name="enabled"/>, and a log beside them. <paramref name="waits"/> replaces the channel's time limits.
+    /// </summary>
+    public HealdanLink Link(bool enabled = true, IReadOnlyDictionary<ChannelWait, TimeSpan>? waits = null)
+    {
+        var settings = new SettingsStore(Path.Combine(Folders.Support, "coffeepdf-settings")) { HealdanEnabled = enabled };
+        var log = new CoffeeLog(Path.Combine(Folders.Support, "coffeepdf-log"));
+        return new HealdanLink(settings, Folders, log, new HelperChannel(Folders, log, waits));
+    }
 
     /// <summary>A copy's state as the Helper writes it (its ChannelHandler.Json).</summary>
     public static JsonObject Json(CopyState state) => !state.Known
