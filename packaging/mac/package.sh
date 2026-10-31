@@ -112,6 +112,11 @@ done
 [ -f "$work/publish/libcoffeepdfium.dylib" ] || die "the publish made no libcoffeepdfium.dylib, CoffeePDF's own copy of PDFium"
 lipo "$work/publish/libcoffeepdfium.dylib" -verify_arch arm64 2>/dev/null ||
   die "libcoffeepdfium.dylib isn't built for Apple silicon, so CoffeePdfiumRid didn't reach CoffeePdf.Core"
+# TEMPORARY (AvaloniaUI/Avalonia#22285): Avalonia's macOS library is the patched one, which
+# packaging/avalonia-native/AvaloniaNative.targets puts in place of the package's. This stops a package that lost it.
+# It goes when the patch does (packaging/avalonia-native/README.md).
+cmp -s "$work/publish/libAvaloniaNative.dylib" "$repo/packaging/avalonia-native/libAvaloniaNative.dylib" ||
+  die "the publish's libAvaloniaNative.dylib isn't the patched one in packaging/avalonia-native"
 
 say "Building $app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"

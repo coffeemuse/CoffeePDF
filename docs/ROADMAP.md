@@ -12,6 +12,9 @@
   spec's ยง16 (Phase 2).
   - The first signed, notarised pre-release, `v0.0.1-spike4`, passed Gatekeeper on 2026-10-30
     ([Releasing](RELEASING.md)).
+  - [Issue #9](https://github.com/coffeemuse/CoffeePDF/issues/9), the macOS 27 menu bar, is worked around by a
+    temporary patch to Avalonia's macOS library (AvaloniaUI/Avalonia#22285), and the owner's check passed on
+    2026-10-31. Removing it is in the backlog.
   - The two checks that need Acrobat are best effort, in
     [issue #3](https://github.com/coffeemuse/CoffeePDF/issues/3), and hold no phase.
 
@@ -36,6 +39,9 @@ moves to the control's own when a newer PdfViewer adds the feature (the spec's ย
 
 ## Backlog
 
+- **Remove the temporary patch to Avalonia's macOS library** once an Avalonia release fixes
+  [AvaloniaUI/Avalonia#22285](https://github.com/AvaloniaUI/Avalonia/issues/22285), which is the cause of
+  [issue #9](https://github.com/coffeemuse/CoffeePDF/issues/9). `packaging/avalonia-native/README.md` has the steps.
 - OCR and comparing versions, which may belong on Healdan's server.
 - Linux, after the Helper's Linux phase. Windows later. Both make their icons from the artwork in
   `packaging/icon/CoffeePDF.png`, as `packaging/mac/make-icon.sh` does the Mac's.

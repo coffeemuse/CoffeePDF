@@ -12,6 +12,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <Import Project="../AvaloniaLicense.props" />
+  <!-- TEMPORARY: a patched libAvaloniaNative.dylib for the macOS 27 menu bar, until Avalonia fixes it (AvaloniaUI/Avalonia#22285). -->
+  <Import Project="../packaging/avalonia-native/AvaloniaNative.targets" />
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />
