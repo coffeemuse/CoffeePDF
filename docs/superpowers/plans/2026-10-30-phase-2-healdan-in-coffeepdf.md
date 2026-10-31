@@ -7,6 +7,10 @@ of the repository, builds with no warnings.
   passed five runs more.
 - Only the fake Helper was used, never the real Helper or Healdan. The edits to doc comments alone weren't checked.
 
+The owner then answered its questions (below). Only question 1's answer changed the tasks: a copy's title is now the
+Helper's. Task 5's new title code was built with no warnings, and its tests and Task 1's `CopyNameTests` passed (30). The
+app's tests in Tasks 9, 11, 12 and 13 had only their expected titles changed to match, and haven't been run since.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** With Healdan support on, CoffeePDF works with Healdan documents through the Healdan Helper's local channel.
@@ -39,81 +43,57 @@ through the same path, with `asCopy`.
 The channel is Healdan's, so read its Developer Guide's Desktop Clients page too (`site/content/developer/desktop-clients.md`
 in `Healdan-Project/healdan`), especially "The Channel" and "The Helper's Files".
 
-## Questions for the owner
+## The owner's answers
 
-The spec leaves these open, or today's Helper does something other than the spec says. The plan doesn't decide them.
-Each says what the tasks are written to assume, and which task changes if the answer is different.
+The spec left these open, or today's Helper does something other than the spec says. The owner answered them on
+2026-10-30, choosing the recommendation each time. The spec's §4.4, §5 and §6 now say so, and §16 records them as
+"Phase 2's questions". The tasks follow the answers, and refer to them by number.
 
-1. **The title's form (§6.1).** The spec shows `Settlement Agreement — #1234 v2.1`. The Helper's `title` is the copy's
-   file name without `.pdf`, `Settlement Agreement #1234 v2.1`, or `… v2.1 (read-only)` for a read-only copy, and the
-   LibreOffice extension shows it as it is.
-   - *Assumed:* §6.1's form, built from `title` and `docRef`. The name is `title` without ` #1234 v2.1` and
-     ` (read-only)`. A read-only copy has the same title, and its bar says it's read-only. When `title` doesn't end in
-     its `docRef`, the name comes from the copy's file name.
-   - *Changes:* Task 5 (`WindowDocument.Title`).
-2. **Who holds it (§6.1).** The read-only bar names the holder and the computer ("checked out by Jane on MacBook-Pro").
-   The state's `holdBy` is the holder's name only, since the Helper takes `hold.by.name`.
-   - *Assumed:* "Read-only — checked out by Jane". Naming the computer needs a field in the state, from Healdan's
-     milestone (Phase 3).
-   - *Changes:* Task 5 (`WindowBar.HeldBy`).
-3. **A refused save's state (§6.9).** The spec says CoffeePDF's next `/v1/state` shows the copy as read-only after a
-   `409`. Today's Helper ends the check-out on a refusal (the record's `CheckedOutHere` becomes false) but leaves the
-   state's `readOnly` false, so nothing in the state changes. A copy reopened from the Helper's Not Yet in Healdan is
-   likely the same, since its check-out has ended too and no field of the state says so.
-   - *Assumed:* the fake Helper answers `readOnly: true` as §6.9 says. Healdan's milestone then makes the real Helper
-     do so: an item for §4.4.
-   - *Changes:* nothing in CoffeePDF if Healdan agrees. If the owner wants CoffeePDF to cope with today's Helper
-     instead, the state needs another field, so it's still a Healdan change.
-4. **The Helper's errors (§6.9).** The spec says CoffeePDF shows the error's message. The channel's errors carry only a
-   code, such as `{"error": "internal-error"}` with status 500.
-   - *Assumed:* CoffeePDF's own words, with the status and code: "Healdan Helper couldn’t show its Open window." and
-     "Healdan Helper answered 500 (internal-error)". Then the Mac's own box, as the LibreOffice extension falls back to
-     its own.
-   - *Changes:* Tasks 12 and 13.
-5. **A read-only copy while the Helper is away (§6.1).** The Helper-away row has markup on. A copy named
-   `… (read-only).pdf` is read-only all the same.
-   - *Assumed:* such a copy stays read-only, and gets no lock file. Only an editable copy's name gets markup, a lock
-     file and its saves followed.
-   - *Changes:* Task 5 (`WindowDocument.Commands`, `HoldsLock`).
-6. **When the Helper-away bar goes (§6.9).** The spec says once the Helper answers again. Nothing asks it while the user
-   doesn't save.
-   - *Assumed:* the window asks `/v1/state` again each time it comes forward, and each save's following asks too.
-     There's no polling of its own.
-   - *Changes:* Task 9.
-7. **Turning Healdan support on (§5).** The spec says only that turning it off takes effect for each copy as its
-   window closes.
-   - *Assumed:* turning it on takes effect at once. Local windows get the Healdan menu, and ⌘O and ⇧⌘S go to the
-     Helper. A copy opened with support off asks the Helper and takes its mode. Turning it off takes effect at once for
-     local windows too.
-   - *Changes:* Tasks 9 and 13.
-8. **Leaving a copy through Save As.** §6.6 lets the old copy go when Save as New Document moves the window. A Save As
-   to a local file through the Mac's panel (after the Helper's `local`, or with the Helper away) also moves the window
-   off its copy.
-   - *Assumed:* it lets the copy go the same way, with its lock file removed and `/v1/closed`, and the window becomes
-     local.
-   - *Changes:* Tasks 10 and 11 (`AfterSave`).
-9. **Save as New Version with the Helper away (§6.5).** The version can't be asked for.
-   - *Assumed:* CoffeePDF says so and doesn't save, rather than saving a snapshot the user didn't ask for. The
-     LibreOffice extension saves locally without saying.
-   - *Changes:* Task 11.
-10. **Smaller ones.**
-    - *The Saving to Healdan… indicator (§6.4):* assumed from the save's write until an answer that isn't `pending`,
-      since the first `/v1/saved` can take 120 seconds to answer.
-    - *Time limits:* §4.3 says only that the window routes never time out. Assumed are the LibreOffice extension's
-      limits for the rest: 10 seconds, 135 for `/v1/saved` (which answers within 120), and 660 for `/v1/file`.
-    - *A copy the Helper doesn't know* (`{"known": false}` for a file in `Copies/`): assumed local, and still kept out
-      of Open Recent.
-    - *The first launch's question (§5):* assumed "Use CoffeePDF with Healdan?", with Not Now and Use with Healdan. An
-      answer counts as asked, and "installed" means Launch Services knows `com.healdan.helper`.
-    - *The name the Save window starts with:* assumed a copy's name without its doc ref, and a local file's name
-      without `.pdf`.
-    - *The log on Linux:* §6.9 names only the Mac's place. Assumed is the settings folder, until the Linux phase.
+1. **The title (§6.1):** the Helper's `title` as it is, as the LibreOffice extension shows it:
+   `Settlement Agreement #1234 v2.1`, or `… v2.1 (read-only)` for a read-only copy. CoffeePDF adds " — Edited" and
+   " — Saving to Healdan…" after it. Without the Helper's answer, the title is the copy's file name without `.pdf`,
+   which is what the Helper's would be. The spec had `Settlement Agreement — #1234 v2.1`. (Task 5,
+   `WindowDocument.Title`.)
+2. **Who holds it (§6.1):** "Read-only — checked out by Jane". The state's `holdBy` is the holder's name only, since the
+   Helper takes `hold.by.name`. The computer waits for the state to name it, in Healdan's milestone (§4.4 item 9).
+   (Task 5, `WindowBar.HeldBy`.)
+3. **A refused save's state (§6.9):** the Helper changes in Healdan's milestone (§4.4 item 10). Today's Helper ends the
+   check-out on a refusal (the record's `CheckedOutHere` becomes false) but leaves the state's `readOnly` false. The fake
+   Helper answers `readOnly: true`, as §6.9 says. Until the real one does, a refused copy stays editable in CoffeePDF.
+   Nothing in CoffeePDF changes.
+4. **The Helper's errors (§6.9):** CoffeePDF's own words, with the status and code, since the channel's errors carry
+   only a code, such as `{"error": "internal-error"}` with status 500. For example "Healdan Helper couldn’t show its
+   Open window." and "Healdan Helper answered 500 (internal-error)". Then the Mac's own box, as the LibreOffice
+   extension falls back to its own. (Tasks 12 and 13.)
+5. **A read-only copy with the Helper away (§6.1):** a copy named `… (read-only).pdf` stays read-only, and gets no lock
+   file. Only an editable copy's name gets markup, a lock file and its saves followed. (Task 5,
+   `WindowDocument.Commands`, `HoldsLock`.)
+6. **When the Helper-away bar goes (§6.9):** the window asks `/v1/state` again each time it comes forward, and each
+   save's following asks too. Nothing polls. (Task 9.)
+7. **Turning Healdan support on (§5):** it takes effect at once. Local windows get the Healdan menu, and ⌘O and ⇧⌘S go
+   to the Helper. A copy opened with support off asks the Helper and takes its mode. Turning it off takes effect at once
+   for local windows too. (Tasks 9 and 13.)
+8. **Leaving a copy through Save As (§6.6):** a Save As to a local file through the Mac's panel, after the Helper's
+   `local` or with the Helper away, lets the copy go as Save as New Document does. Its lock file goes, CoffeePDF calls
+   `/v1/closed`, and the window becomes local. (Tasks 10 and 11, `AfterSave`.)
+9. **Save as New Version with the Helper away (§6.5):** CoffeePDF says so and doesn't save, rather than saving a
+   snapshot the user didn't ask for. The LibreOffice extension saves locally without saying. (Task 11.)
+10. **The smaller ones:**
+    - *The first launch's question (§5):* "Use CoffeePDF with Healdan?", with Not Now and Use with Healdan. Either
+      answer counts as asked, and "installed" means Launch Services knows `com.healdan.helper`. (Task 8.)
+    - *The Saving to Healdan… indicator (§6.4):* from the save's write until an answer that isn't `pending`, since the
+      first `/v1/saved` can take 120 seconds to answer. (Task 11.)
+    - *Time limits:* the window routes never time out (§6.3). The rest take the LibreOffice extension's limits:
+      10 seconds, 135 for `/v1/saved` (which answers within 120), and 660 for `/v1/file`. (Tasks 3 and 4.)
+    - *A copy the Helper doesn't know* (`{"known": false}` for a file in `Copies/`): local, and still kept out of Open
+      Recent. (Tasks 5 and 9.)
+    - *The name the Save window starts with:* a copy's name without its doc ref, and a local file's name without
+      `.pdf`. (Task 5, `NameForHealdan`.)
+    - *The log on Linux:* in the settings folder, until the Linux phase. (Task 2.)
 
-These are for Healdan's milestone (Phase 3) rather than questions for this plan:
-- §4.4 should add the state's read-only after a refusal (question 3), and the holder's computer if wanted (question 2).
-- Save as New Version on a document with no new changes marks the next save as a version (`MarkNextVersion`), and
-  `/v1/saved` answers `pending` while that version is still to go. The acceptance's step 3 (§2.5) should mark up before
-  Save as New Version.
+The spec's §16 also notes, for the acceptance (§2.5): Save as New Version on a document with no new changes marks the
+next save as a version (`MarkNextVersion`), and `/v1/saved` answers `pending` while that version is still to go. So the
+acceptance's step 3 should add a markup before Save as New Version.
 
 ## What the Helper's channel does today
 
@@ -1907,9 +1887,9 @@ git commit -m "Call the Helper's channel, with the secret, and wait for its wind
   - `enum BarAction { None, SaveAsNewDocument, TurnOnHealdan }`.
   - `sealed record WindowBar(string Text, BarAction Action)`, with the texts `ReadOnlyOpen`, `Refused`, `HelperAway`,
     `HelperAwayReadOnly` and `SupportOff`, and `static string HeldBy(string holder)`.
-  - `DocumentTitle.ForCopy(string name, string docRef, bool edited, bool saving) : string`.
+  - `DocumentTitle.ForCopy(string title, bool edited, bool saving) : string`.
 
-The modes follow §6.1's table, with the assumptions of questions 1, 2, 5 and 7. `Asking` is a copy whose `/v1/state`
+The modes follow §6.1's table, with the owner's answers to questions 1, 2, 5 and 7. `Asking` is a copy whose `/v1/state`
 hasn't answered yet: read-only meanwhile, so nothing can be marked up before the mode is known.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1917,13 +1897,12 @@ hasn't answered yet: read-only meanwhile, so nothing can be marked up before the
 Add to `CoffeePdf.Core.Tests/Documents/DocumentTitleTests.cs`:
 ```csharp
     [Fact]
-    public void A_copy_shows_its_name_and_doc_ref() =>
-        Assert.Equal("Settlement Agreement — #1234 v2.1", DocumentTitle.ForCopy("Settlement Agreement", "#1234 v2.1", edited: false, saving: false));
-
-    [Fact]
-    public void A_copy_says_Edited_and_Saving_to_Healdan() =>
-        Assert.Equal("Settlement Agreement — #1234 v2.1 — Edited — Saving to Healdan…",
-            DocumentTitle.ForCopy("Settlement Agreement", "#1234 v2.1", edited: true, saving: true));
+    public void A_copy_shows_the_Helpers_title_and_says_Edited_and_Saving_to_Healdan()
+    {
+        Assert.Equal("Settlement Agreement #1234 v2.1", DocumentTitle.ForCopy("Settlement Agreement #1234 v2.1", edited: false, saving: false));
+        Assert.Equal("Settlement Agreement #1234 v2.1 — Edited — Saving to Healdan…",
+            DocumentTitle.ForCopy("Settlement Agreement #1234 v2.1", edited: true, saving: true));
+    }
 ```
 
 `CoffeePdf.Core.Tests/Documents/WindowDocumentTests.cs`:
@@ -2005,31 +1984,34 @@ public sealed class WindowDocumentTests
     }
 
     [Fact]
-    public void A_copys_title_is_its_name_and_the_version_Healdan_has()
+    public void A_copys_title_is_the_Helpers()
     {
-        Assert.Equal("Settlement Agreement — #1234 v2.1", Asking().Answered(State()).Title(edited: false, saving: false));
-        Assert.Equal("Settlement Agreement — #1234 v2.1 — Edited", Asking().Answered(State()).Title(edited: true, saving: false));
-        // A save moves the title on, though the copy keeps the name it was opened with.
-        Assert.Equal("Settlement Agreement — #1234 v2.2 — Saving to Healdan…",
+        Assert.Equal("Settlement Agreement #1234 v2.1", Asking().Answered(State()).Title(edited: false, saving: false));
+        Assert.Equal("Settlement Agreement #1234 v2.1 — Edited", Asking().Answered(State()).Title(edited: true, saving: false));
+        // A save moves the Helper's title on, though the copy keeps the name it was opened with.
+        Assert.Equal("Settlement Agreement #1234 v2.2 — Saving to Healdan…",
             Asking().Answered(State()).Answered(State(version: "2.2", pending: true)).Title(edited: false, saving: true));
     }
 
     [Fact]
-    public void A_read_only_copys_title_leaves_the_read_only_mark_to_its_bar() =>
-        Assert.Equal("Settlement Agreement — #1234 v2.1", Asking(ReadOnlyCopy).Answered(State(readOnly: true)).Title(false, false));
+    public void A_read_only_copys_title_says_so_as_the_Helpers_does() =>
+        Assert.Equal("Settlement Agreement #1234 v2.1 (read-only)", Asking(ReadOnlyCopy).Answered(State(readOnly: true)).Title(false, false));
 
     [Fact]
-    public void Without_the_Helpers_answer_the_title_comes_from_the_copys_name()
+    public void Without_the_Helpers_answer_the_title_is_the_copys_name_as_the_Helper_would_give_it()
     {
-        Assert.Equal("Settlement Agreement — #1234 v2.1", Asking().Title(false, false));
-        Assert.Equal("Settlement Agreement — #1234 v2.1", Asking().Answered(null).Title(false, false));
-        Assert.Equal("Settlement Agreement — #1234 v2.1", WindowDocument.Opened(Copy, false, true).Title(false, false));
+        Assert.Equal("Settlement Agreement #1234 v2.1", Asking().Title(false, false));
+        Assert.Equal("Settlement Agreement #1234 v2.1", Asking().Answered(null).Title(false, false));
+        Assert.Equal("Settlement Agreement #1234 v2.1", WindowDocument.Opened(Copy, false, true).Title(false, false));
+        Assert.Equal("Settlement Agreement #1234 v2.1 (read-only)", Asking(ReadOnlyCopy).Answered(null).Title(false, false));
     }
 
     [Fact]
-    public void A_title_that_doesnt_end_in_its_doc_ref_gives_way_to_the_copys_name() =>
-        Assert.Equal("Settlement Agreement — #1234 v2.1",
-            Asking().Answered(State() with { Title = "Something else entirely" }).Title(false, false));
+    public void The_Helpers_title_shows_as_it_is_and_an_empty_one_gives_way_to_the_copys_name()
+    {
+        Assert.Equal("Something else entirely", Asking().Answered(State() with { Title = "Something else entirely" }).Title(false, false));
+        Assert.Equal("Settlement Agreement #1234 v2.1", Asking().Answered(State() with { Title = "" }).Title(false, false));
+    }
 
     [Fact]
     public void Local_files_and_names_that_arent_a_copys_show_the_file_name()
@@ -2125,11 +2107,11 @@ In `CoffeePdf.Core/Documents/DocumentTitle.cs`, change the class's summary to
 `/// <summary>A document window's title (spec §6.1): a local file's, and a Healdan copy's.</summary>`, and add:
 ```csharp
     /// <summary>
-    /// A Healdan copy's title (spec §6.1): <c>Settlement Agreement — #1234 v2.1</c>, with " — Edited" while it has
-    /// unsaved changes, and " — Saving to Healdan…" while a save is on its way there (§6.4).
+    /// A Healdan copy's title (spec §6.1): the Helper's, as it gives it, such as <c>Settlement Agreement #1234 v2.1</c>,
+    /// with " — Edited" while it has unsaved changes, and " — Saving to Healdan…" while a save is on its way there (§6.4).
     /// </summary>
-    public static string ForCopy(string name, string docRef, bool edited, bool saving) =>
-        $"{name} — {docRef}{(edited ? " — Edited" : "")}{(saving ? " — Saving to Healdan…" : "")}";
+    public static string ForCopy(string title, bool edited, bool saving) =>
+        $"{title}{(edited ? " — Edited" : "")}{(saving ? " — Saving to Healdan…" : "")}";
 ```
 
 `CoffeePdf.Core/Documents/WindowCommands.cs`:
@@ -2256,8 +2238,8 @@ public sealed record WindowDocument(string Path, DocumentMode Mode, CopyState? C
 
     /// <summary>The window's title (§6.1). <paramref name="saving"/> shows only where saves go to Healdan.</summary>
     public string Title(bool edited, bool saving) =>
-        Mode != DocumentMode.Local && CopyTitle() is { } copy
-            ? DocumentTitle.ForCopy(copy.Name, copy.DocRef, edited, saving && FollowsSaves)
+        Mode != DocumentMode.Local && CopyTitle is { } title
+            ? DocumentTitle.ForCopy(title, edited, saving && FollowsSaves)
             : DocumentTitle.For(Path, edited);
 
     /// <summary>The bar across the window's top, if its mode has one (§6.1, §6.9).</summary>
@@ -2303,19 +2285,24 @@ public sealed record WindowDocument(string Path, DocumentMode Mode, CopyState? C
     /// without its extension, as the LibreOffice extension's.
     /// </summary>
     public string NameForHealdan =>
-        (Mode == DocumentMode.Local ? null : CopyTitle()?.Name)
+        (Mode == DocumentMode.Local ? null : DocumentName)
         ?? (System.IO.Path.GetFileNameWithoutExtension(Path) is { Length: > 0 } stem ? stem : "Untitled");
 
     /// <summary>The copy's name says it's read-only: <c>… (read-only).pdf</c>.</summary>
     private bool ReadOnlyByName => CopyName.Parse(Path)?.ReadOnly == true;
 
-    /// <summary>The copy's name and doc ref: from the Helper's answer when it gave them, else from the file's name.</summary>
-    private (string Name, string DocRef)? CopyTitle()
-    {
-        if (Copy is { Known: true } copy && CopyName.NameIn(copy.Title, copy.DocRef) is { } name)
-            return (name, copy.DocRef);
-        return CopyName.Parse(Path) is { } parts ? (parts.Name, parts.DocRef) : null;
-    }
+    /// <summary>
+    /// A copy's title: the Helper's, as the LibreOffice extension shows it, else the copy's file name without its
+    /// extension, which is what the Helper's would be. Null for a file not named as a copy.
+    /// </summary>
+    private string? CopyTitle =>
+        Copy is { Known: true, Title.Length: > 0 } copy ? copy.Title
+        : CopyName.Parse(Path) is not null ? System.IO.Path.GetFileNameWithoutExtension(Path)
+        : null;
+
+    /// <summary>The document's name without its doc ref: from the Helper's answer when it gives one, else from the file's name.</summary>
+    private string? DocumentName =>
+        (Copy is { Known: true } copy ? CopyName.NameIn(copy.Title, copy.DocRef) : null) ?? CopyName.Parse(Path)?.Name;
 }
 ```
 
@@ -3310,7 +3297,7 @@ public sealed class HealdanOpenTests : IDisposable
         });
 
         Assert.Equal(DocumentMode.Editable, mode);
-        Assert.Equal("Settlement Agreement — #1234 v2.1", title);
+        Assert.Equal("Settlement Agreement #1234 v2.1", title);
         Assert.False(readOnly);
         Assert.False(bar);
         Assert.True(locked);
@@ -3331,7 +3318,7 @@ public sealed class HealdanOpenTests : IDisposable
         });
 
         Assert.Equal(DocumentMode.ReadOnly, mode);
-        Assert.Equal("Settlement Agreement — #1234 v2.1", title);
+        Assert.Equal("Settlement Agreement #1234 v2.1 (read-only)", title);
         Assert.True(readOnly);
         Assert.Equal("Read-only — checked out by Zoë Q. Reviewer", bar);
         Assert.False(locked);
@@ -3352,7 +3339,7 @@ public sealed class HealdanOpenTests : IDisposable
         });
 
         Assert.Equal(DocumentMode.HelperAway, mode);
-        Assert.Equal("Settlement Agreement — #1234 v2.1", title);
+        Assert.Equal("Settlement Agreement #1234 v2.1", title);
         Assert.False(readOnly);
         Assert.Equal(WindowBar.HelperAway, bar);
         Assert.True(locked);
@@ -4153,14 +4140,14 @@ public sealed class HealdanSaveTests : IDisposable
             await window.SaveAsync();
             var onItsWay = window.Title;
             held.SetResult();
-            await TestWindows.WaitForAsync(() => window.Title == "Settlement Agreement — #1234 v2.2");
+            await TestWindows.WaitForAsync(() => window.Title == "Settlement Agreement #1234 v2.2");
             var done = window.Title;
             await CloseAsync(window);
             return (onItsWay, done, taken);
         });
 
-        Assert.Equal("Settlement Agreement — #1234 v2.1 — Saving to Healdan…", during);
-        Assert.Equal("Settlement Agreement — #1234 v2.2", after);
+        Assert.Equal("Settlement Agreement #1234 v2.1 — Saving to Healdan…", during);
+        Assert.Equal("Settlement Agreement #1234 v2.2", after);
         Assert.Equal(new[] { TimeSpan.FromSeconds(2) }, pauses);
         Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(copy), 0)).Author);
     }
@@ -4213,7 +4200,7 @@ public sealed class HealdanSaveTests : IDisposable
             };
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
             await window.SaveAsync();
-            await TestWindows.WaitForAsync(() => window.Title == "Settlement Agreement — #1234 v2.2");
+            await TestWindows.WaitForAsync(() => window.Title == "Settlement Agreement #1234 v2.2");
             var state = (shown, taken, window.Title, window.Bar.IsVisible, PdfAnnotations.Read(File.ReadAllBytes(copy), 0).Count);
             await CloseAsync(window);
             return state;
@@ -4221,7 +4208,7 @@ public sealed class HealdanSaveTests : IDisposable
 
         Assert.Equal(WindowBar.HelperAway, barWhileAway);
         Assert.Equal(new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5) }, pauses);
-        Assert.Equal("Settlement Agreement — #1234 v2.2", title);
+        Assert.Equal("Settlement Agreement #1234 v2.2", title);
         Assert.False(barAfter);
         Assert.Equal(1, notes);
     }
@@ -4537,7 +4524,7 @@ public sealed class SaveToHealdanTests : IDisposable
         Assert.True(saved);
         Assert.Equal(Filed, shown);
         Assert.Equal(DocumentMode.Editable, mode);
-        Assert.Equal("Report — #1 v1", title);
+        Assert.Equal("Report #1 v1", title);
         Assert.True(locked);
         Assert.False(unsaved);
         Assert.Equal(new[] { "save-new", "file", "adopted", "closed" }, _helper.Routes);
@@ -5332,7 +5319,7 @@ public sealed class HealdanMenuTests : IDisposable
             return shown;
         });
 
-        Assert.Equal("Signed Settlement Agreement — #1234 v2.1", title);
+        Assert.Equal("Signed Settlement Agreement #1234 v2.1", title);
     }
 }
 ```
@@ -5537,12 +5524,10 @@ Expected: `packaging/mac/out/CoffeePDF-0.2.0-phase2.dmg`.
 In `docs/ROADMAP.md`, set Phase 2's status to "built YYYY-MM-DD; the owner's checks pending", with the day it's built,
 and add the plan's link as Phase 1's has it.
 
-In the spec's §16, add a short "Phase 2 (built YYYY-MM-DD)" part after Phase 1's. It records:
+In the spec's §16, add a short "Phase 2 (built YYYY-MM-DD)" part after "Phase 2's questions", which already records
+the owner's answers and §4.4's items 9 and 10. It records:
 - what the tests showed, with and without the key;
-- the owner's answers to this plan's questions, and what changed with them;
-- the items this plan found for Healdan's milestone (the read-only state after a refusal, the holder's computer, and
-  Save as New Version with nothing new to send), and whether the owner put them in §4.4;
-- anything the build found that this plan didn't expect.
+- anything the build found that this plan didn't expect, and any answer it changed.
 
 - [ ] **Step 5: List the owner's checks in the pull request**
 
@@ -5567,7 +5552,7 @@ example. When a result goes into the spec, describe a name rather than quoting i
    - Expected: the Helper's Open window shows. Its way back to the Mac's box shows the Mac's Open panel, and its Cancel
      does nothing.
    - Choose a PDF in it. Today's Helper opens a PDF read-only in the default app, so with CoffeePDF the default PDF app,
-     a read-only copy opens in CoffeePDF. Expected: the read-only bar, the title `<name> — #<doc #> v<version>`, and the
+     a read-only copy opens in CoffeePDF. Expected: the read-only bar, the title `<name> #<doc #> v<version> (read-only)`, and the
      markup tools off.
    - Close the window. Expected: the Helper deletes its copy.
    - If today's Helper does something else, record what.
@@ -5581,7 +5566,7 @@ example. When a result goes into the spec, describe a name rather than quoting i
    cp ~/Desktop/check.pdf ~/Desktop/helper-check/Copies/"Check #1 v1.pdf"
    HEALDAN_HELPER_DEV_ROOT=~/Desktop/helper-check /Applications/CoffeePDF.app/Contents/MacOS/CoffeePDF ~/Desktop/helper-check/Copies/"Check #1 v1.pdf"
    ```
-   - With support on, expected: the title `Check — #1 v1`, the bar saying Healdan Helper isn't running, the markup
+   - With support on, expected: the title `Check #1 v1`, the bar saying Healdan Helper isn't running, the markup
      tools on, and `.~coffeepdf.Check #1 v1.pdf#` beside the copy while its window is open (`ls -a` in the folder).
      Closing the window removes it.
    - With support off, expected: the read-only bar, with Turn On Healdan Support. The button turns support on, and the
