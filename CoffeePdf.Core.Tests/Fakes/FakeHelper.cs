@@ -18,7 +18,8 @@ namespace CoffeePdf.Core.Tests.Fakes;
 /// </summary>
 /// <remarks>
 /// Each route answers from a handler the test can replace. By default the state routes answer the copies added,
-/// <c>file</c> files the temporary file as a new copy, the window routes answer <c>cancel</c>, and the rest answer
+/// <c>file</c> files the temporary file as a new document (<see cref="FileAsync"/>), the window routes answer
+/// <c>cancel</c>, and the rest answer
 /// <c>{}</c>. A call to any other route is answered 404 and fails the test at <see cref="Dispose"/>. The app's tests
 /// compile this file too.
 /// </remarks>
@@ -45,7 +46,7 @@ internal sealed class FakeHelper : IDisposable
         Answer(ChannelRoutes.State, body => Task.FromResult<JsonNode>(Json(StateOf(PathIn(body)))));
         Answer(ChannelRoutes.Saved, body => Task.FromResult<JsonNode>(Json(StateOf(PathIn(body)))));
         Answer(ChannelRoutes.Adopted, body => Task.FromResult<JsonNode>(Json(StateOf(PathIn(body)))));
-        Answer(ChannelRoutes.File, FileTemporary);
+        Answer(ChannelRoutes.File, FileAsync);
         Answer(ChannelRoutes.OpenDialog, new JsonObject { ["action"] = "cancel" });
         Answer(ChannelRoutes.SaveNew, new JsonObject { ["action"] = "cancel" });
         Answer(ChannelRoutes.Properties, new JsonObject { ["action"] = "cancel" });
@@ -78,9 +79,33 @@ internal sealed class FakeHelper : IDisposable
     /// <summary>Puts a copy in <c>Copies/</c>, named as the Helper names them, and answers its state.</summary>
     public string AddCopy(string name, long docNumber, string version, bool readOnly = false, string? holdBy = null, byte[]? pdf = null)
     {
+        var path = NameCopy(name, docNumber, version, readOnly, holdBy);
+        File.WriteAllBytes(path, pdf ?? MinimalPdf.Build());
+        return path;
+    }
+
+    /// <summary>
+    /// <c>/v1/file</c> as the Helper does it (its <c>CopyCycle.AdoptNewAsync</c>): the temporary file is filed as a new
+    /// document, checked out here, and goes, and the answer is the copy the app is to save the document as. The Helper
+    /// doesn't write that copy: the app does. The tests that answer the route themselves file through this too.
+    /// </summary>
+    public Task<JsonNode> FileAsync(JsonObject body)
+    {
+        var temp = (string)body["tempPath"]!;
+        LastFiled = File.ReadAllBytes(temp);
+        var path = NameCopy((string)body["name"]!, Interlocked.Increment(ref _lastDocNumber), "1", readOnly: false, holdBy: null);
+        File.Delete(temp);
+        return Task.FromResult<JsonNode>(Json(StateOf(path)));
+    }
+
+    /// <summary>The bytes the last filing took from its temporary file, which are what Healdan has.</summary>
+    public byte[]? LastFiled { get; private set; }
+
+    /// <summary>Names a copy in <c>Copies/</c> as the Helper names them, and answers its state, without writing its file.</summary>
+    private string NameCopy(string name, long docNumber, string version, bool readOnly, string? holdBy)
+    {
         var file = $"{name} #{docNumber} v{version}{(readOnly ? " (read-only)" : "")}.pdf";
         var path = Path.Combine(Folders.Copies, file);
-        File.WriteAllBytes(path, pdf ?? MinimalPdf.Build());
         SetState(new CopyState(true, docNumber, Path.GetFileNameWithoutExtension(file), $"#{docNumber} v{version}", readOnly, path, holdBy, Pending: false));
         return path;
     }
@@ -136,15 +161,6 @@ internal sealed class FakeHelper : IDisposable
         }
         if (!_unlisted.IsEmpty)
             throw new InvalidOperationException($"CoffeePDF called routes ChannelRoutes doesn’t list: {string.Join(", ", _unlisted)}");
-    }
-
-    /// <summary><c>/v1/file</c> as the Helper does it: the temporary file becomes a new document's copy, checked out here, and goes.</summary>
-    private Task<JsonNode> FileTemporary(JsonObject body)
-    {
-        var temp = (string)body["tempPath"]!;
-        var path = AddCopy((string)body["name"]!, Interlocked.Increment(ref _lastDocNumber), "1", pdf: File.ReadAllBytes(temp));
-        File.Delete(temp);
-        return Task.FromResult<JsonNode>(Json(StateOf(path)));
     }
 
     private static string PathIn(JsonObject body) => (string?)body["path"] ?? "";

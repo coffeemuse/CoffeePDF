@@ -394,7 +394,7 @@ public partial class DocumentWindow : Window
             Healdan.Log.Info("Save to Healdan stopped: the window closed");
             return false;
         }
-        var filing = await FileAndMoveAsync(answer, original);
+        var filing = await FileAndMoveAsync(answer, original, temp);
         if (_closeWhenMoved)
         {
             // A close came during the filing, and goes through now that the move is over: the Mac's Save panel isn't shown
@@ -422,19 +422,35 @@ public partial class DocumentWindow : Window
 
         /// <summary>The Helper didn't answer, so Healdan may have the document already.</summary>
         Unknown,
+
+        /// <summary>Nothing was filed: the PDF written for Healdan couldn't be read back.</summary>
+        NotFiled,
     }
 
     /// <summary>
-    /// Files the PDF written for the answer, and moves the window to the new copy (spec §6.6 steps 2 and 3), taking no
-    /// input meanwhile. Returns how the filing ended. When it wasn't filed, the window is as it was, with its changes
-    /// unsaved.
+    /// Files <paramref name="temp"/>, the PDF written for the answer, and moves the window to the new copy (spec §6.6
+    /// steps 2 and 3), taking no input meanwhile. Returns how the filing ended. When it wasn't filed, the window is as
+    /// it was, with its changes unsaved.
     /// </summary>
-    private async Task<Filing> FileAndMoveAsync(SaveNewAnswer answer, string? original)
+    private async Task<Filing> FileAndMoveAsync(SaveNewAnswer answer, string? original, string temp)
     {
         _moving = true;
         DocumentPanel.IsEnabled = false;
         try
         {
+            // Read back once the window is moving, so no save waiting behind the copy writes meanwhile, and before the
+            // filing, which deletes the file: the new copy is these bytes, and the window writes it.
+            byte[] pdf;
+            try
+            {
+                pdf = await File.ReadAllBytesAsync(temp);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                TryDeleteTemporary(temp);
+                await TellAsync($"“{Path.GetFileName(_path)}” couldn’t be written for Healdan.", e.Message);
+                return Filing.NotFiled;
+            }
             CopyState filed;
             try
             {
@@ -461,7 +477,7 @@ public partial class DocumentWindow : Window
                     "Close this window without saving, and open the document from Healdan.");
                 return Filing.Filed;
             }
-            await MoveToCopyAsync(filed);
+            await MoveToCopyAsync(filed, pdf);
             return Filing.Filed;
         }
         finally
@@ -472,14 +488,31 @@ public partial class DocumentWindow : Window
     }
 
     /// <summary>
-    /// Moves the window to the copy Healdan filed (spec §6.6 step 3), in its order: reopens the file there, writes its
-    /// lock file (as the PdfViewer loads it), lets the old copy go, if there was one, and tells the Helper the window
-    /// has adopted the new copy, whose file as it is now is the starting point. The new copy is encrypted as the old
-    /// file was, so the window keeps the password. A close during the move ends the wait for the file to load, which a
-    /// password prompt could hold for ever.
+    /// Moves the window to the copy Healdan filed (spec §6.6 step 3), in its order: writes <paramref name="pdf"/>, the
+    /// PDF filed, as the copy, since the Helper answers only the path; reopens the file there; writes its lock file (as
+    /// the PdfViewer loads it); lets the old copy go, if there was one; and tells the Helper the window has adopted the
+    /// new copy, whose file as it is now is the starting point. The new copy is encrypted as the old file was, so the
+    /// window keeps the password. A close during the move ends the wait for the file to load, which a password prompt
+    /// could hold for ever. A copy that can't be written leaves the window as it was, and the Helper lets the copy go.
     /// </summary>
-    private async Task MoveToCopyAsync(CopyState filed)
+    private async Task MoveToCopyAsync(CopyState filed, byte[] pdf)
     {
+        // The window isn't on the new copy yet, so no save of its own writes there meanwhile.
+        var newDocument = WindowDocument.Opened(filed.Path, healdan: true, inCopies: true).Answered(filed);
+        try
+        {
+            var write = WriteFile;
+            await Task.Run(() => write(filed.Path, pdf));
+        }
+        catch (Exception e)
+        {
+            Healdan.Log.Warn($"The filed copy couldn’t be written ({e.GetType().Name})");
+            await TellAsync($"The document is filed in Healdan as {filed.DocRef}, but its copy couldn’t be written here.",
+                $"{e.Message} Open it from Healdan to go on with it.");
+            await LetGoAsync(filed.Path, newDocument, lockHeld: false);
+            return;
+        }
+
         // No save writes across the move: one still writing finishes first, and one waiting behind it then finds the
         // window moving and writes nothing. The copy written for Healdan was written before the move began.
         await _oneSaveAtATime.WaitAsync();
@@ -490,7 +523,7 @@ public partial class DocumentWindow : Window
             StopFollowing(); // after the wait: a save that finished meanwhile followed the old copy
             var password = Viewer.Password ?? _typedPassword;
             _lockHeld = false;
-            Show(filed.Path, WindowDocument.Opened(filed.Path, healdan: true, inCopies: true).Answered(filed));
+            Show(filed.Path, newDocument);
             _typedPassword = password; // Show cleared it, and the new copy's saves need it to write the author
         }
         finally

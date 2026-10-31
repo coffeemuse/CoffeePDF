@@ -237,13 +237,18 @@ These cover Save as New Document for a copy, and Save to Healdan for a local PDF
 
 1. `POST /v1/save-new {"app": "CoffeePDF", "name", "formats": ["pdf"], "path"}` shows the Helper's Save window, where the user picks a folder and fills in the required properties.
 2. On `save`, CoffeePDF writes the PDF, with its markups, to the answer's `tempPath`. It then calls `/v1/file` with the answer's values unchanged, and gets the new copy's state.
-3. The window moves to the new copy's path:
-   - it reopens the file there;
-   - it writes the new lock file;
-   - it removes the old copy's lock file and calls `/v1/closed` for it, if there was one;
-   - then it calls `/v1/adopted {path}`.
+3. The window moves to the new copy's path. The Helper doesn't write that copy: its answer is the path the app is to
+   save the document as, and the app's first write there is the copy's starting point (its `CopyCycle.AdoptNewAsync`;
+   the owner's check 5, 2026-10-31). So the window:
+   - writes the PDF it filed there, the same bytes, so Healdan already has them;
+   - reopens the file there;
+   - writes the new lock file;
+   - removes the old copy's lock file and calls `/v1/closed` for it, if there was one;
+   - then calls `/v1/adopted {path}`.
 
-   All of this happens before the window takes input again.
+   All of this happens before the window takes input again. If the copy can't be written, the window stays on its file
+   with its changes, and calls `/v1/closed` for the new copy so the Helper lets it go. CoffeePDF says the document is
+   filed, and to open it from Healdan.
 4. On `local`, CoffeePDF shows the Mac's Save panel. On `cancel`, nothing happens.
 
 A save through the Mac's Save panel moves a copy's window to a local file. The window lets the copy go as in step 3: its lock file goes, and CoffeePDF calls `/v1/closed` for it. The window is then local. (owner, 2026-10-30)
@@ -574,11 +579,13 @@ what was planned. This is what the build showed, and what it changed. No owner's
     `What_the_viewer_does_without_a_licence`.
   - Five more runs of the app's PdfViewer tests (`--filter Category=PdfViewer`), which run a fake Helper's listener per
     test in parallel, each passed 102 and skipped that 1.
+  - After check 5's fix, with one test added: with the key, the core's 163 passed, and the app's 122 passed and 1
+    skipped. Without it, the app's 20 passed and 103 skipped. `SaveToHealdanTests` passed three more runs.
 - **The package (observed 2026-10-31).** `packaging/mac/package.sh 0.2.0-phase2`, with the key and no signing identity
   (ad-hoc, without the hardened runtime; Decision 4), made `CoffeePDF-0.2.0-phase2.dmg`, 46,635,525 bytes, sha256
   `678491f03851a6817364fab9f1de59205575adc8f2285dbfa7b7c6d8baf5ac34`. `Contents/MacOS` holds the same six native arm64
-  files as Phase 1's. It is expected to run on the Mac that built it (Decision 4), but it has not been launched: the
-  owner's checks on the Mac do that, and they wait for the pull request (§8).
+  files as Phase 1's. It ran on the Mac that built it (Decision 4) for the owner's checks below. Check 5's fix came after
+  it, and was checked from the build.
 - **What the build changed beyond the plan's code.** Each change came from a review of the build.
   - *Closing and quitting (§6.8).*
     - A closed window never writes a lock file, even when the Helper's answer to `/v1/state` comes after the close.
@@ -612,7 +619,44 @@ what was planned. This is what the build showed, and what it changed. No owner's
     dialog. An open Settings follows a change made elsewhere. The first launch writes the yes before it records the
     question as asked, so a failed second write can't lose it.
   - The log writes its times in the invariant culture.
+- **The owner's checks (2026-10-31).** They ran on the `0.2.0-phase2` package, installed in Applications, with Healdan
+  Helper 0.3.0-rc1 on macOS 27.0.1. All nine passed, check 5 after a fix.
+  1. *The first launch's question.* Not Now left support off and recorded the question as asked, and the next launch
+     didn't ask. Use with Healdan turned support on, and the Healdan menu showed.
+  2. *Settings.* The Healdan section showed with no clipped labels, and the box shows and hides the Healdan menu.
+     - One flaw: back in a document window after the box changes, only the CoffeePDF menu is drawn until the pointer
+       reaches the menu bar. That's issue #9, a fix for after Phase 2.
+     - While Settings is in front the bar holds only the CoffeePDF menu, as Avalonia gives a window without a menu.
+     - A change made in the window in front (check 7's Turn On Healdan Support) draws in full.
+  3. *Support off.* No Healdan menu, and ⌘O and ⇧⌘S showed the Mac's own panels.
+  4. *⌘O through the Helper.*
+     - The Helper's Open window, its way back and its Cancel acted as expected.
+     - A document chosen there opened as a read-only copy, with its bar and title, the markup tools off, and no lock
+       file. Closing it sent `/v1/closed`.
+     - Today's Helper keeps that copy until its next start: it opens a PDF in the default app without tracking it, so
+       it drops the report (Healdan-Project/healdan#134).
+  5. *⇧⌘S through the Helper.* The Save window and its way back acted as expected. The filing then filed the document,
+     but the window showed its PDF as not found.
+     - The cause: the Helper doesn't write the new copy, the app does (§6.6 step 3).
+     - The fake Helper had written it itself, so no test saw this. It now files as the Helper does: it answers the
+       copy's path and writes nothing there.
+     - Fixed: the window writes the PDF it filed to that path, then opens it. If that write fails, it says so, keeps its
+       changes, and lets the new copy go.
+     - Re-checked with the fix, run from the build. The window moved to the new copy, which was written with its lock
+       file and adopted. Closing it sent `/v1/closed`, and the Helper checked the copy in and deleted it.
+     - The new document's title had ` (1)` after its name: Healdan makes a file name unique in its folder, and the
+       first filing had the same name.
+  6. *The Helper quit.* ⌘O and ⇧⌘S showed the Mac's own panels, with no message. The Helper's next start deleted
+     check 4's copy.
+  7. *A copy's bar, title and lock file, with a Helper folder of the check's own.*
+     - With support on, the window showed the title `Check #1 v1`, the Helper-away bar and the markup tools on.
+     - With support off, it showed the read-only bar, whose Turn On Healdan Support made it the Helper-away one.
+     - The lock file was there only while the copy was editable, and went with its window.
+  8. *The log.* No line held the channel's secret, and the log named every route checks 4 and 5 called.
+  9. *Recent documents.* No Healdan copy was in File › Open Recent or the Apple menu's Recent Items.
 - **Follow-ups the build left.**
+  - Asked to quit through AppleScript, CoffeePDF quits but answers "User canceled" (-128), though its own handler
+    cancels nothing there: Avalonia ends the app itself. Check whether that stops a logout or a restart.
   - Save at the close prompt, or at a quit's, while Save to Healdan writes its copy returns false, and the close or quit
     is dropped without a word. Defer the close, or tell the user. Until then ⌘W or ⌘Q again works.
   - A filing shows no progress, for up to 660 seconds, and ⌘Q during it does nothing.
@@ -629,6 +673,9 @@ what was planned. This is what the build showed, and what it changed. No owner's
     stray file when it sets a copy aside.
   - Confirm that the real Helper treats `"path": null` in `/v1/save-new` and `"replaces": null` in `/v1/file` as
     missing. Only the fake Helper has seen them.
+  - The Helper should track each copy it opens in CoffeePDF, so that `/v1/closed` deletes a read-only one at once.
+    Today's Helper opens a PDF in the default app without tracking it, drops the report, and deletes the copy only at
+    its next start (the owner's check 4; Healdan-Project/healdan#134).
   - The menu bar hiding the Healdan item is only checked headless. §2.5 step 7's walkthrough checks it on the Mac.
   - Add a hand check of ⌘S then ⌘W on a large copy, since a close now waits for the save to finish.
 

@@ -89,7 +89,47 @@ public sealed class SaveToHealdanTests : IDisposable
         Assert.Equal("Acme", (string?)filing["properties"]!["Client"]);
         Assert.Null(filing["replaces"]);
         Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(local));
+        Assert.Equal(_helper.LastFiled, File.ReadAllBytes(Filed)); // the window wrote the copy, as the PDF Healdan has
         Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(Filed), 0)).Author);
+    }
+
+    [PdfViewerFact]
+    public async Task A_new_copy_that_cant_be_written_leaves_the_window_with_its_changes_and_lets_the_copy_go()
+    {
+        var local = Local();
+
+        var (saved, shown, unsaved, panel, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(local, _helper.Link());
+            var shownPanel = false;
+            window.PickSaveTarget = _ =>
+            {
+                shownPanel = true;
+                return Task.FromResult<string?>(null);
+            };
+            var write = window.WriteFile;
+            window.WriteFile = (target, pdf) =>
+            {
+                if (target == Filed)
+                    throw new IOException("The disk is full.");
+                write(target, pdf);
+            };
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var result = await window.SaveNewAsync();
+            var state = (result, window.FilePath, window.HasUnsavedChanges, shownPanel, errorList.ToList());
+            await CloseAsync(window);
+            return state;
+        });
+
+        Assert.True(saved); // Healdan has it, so no Save panel files a second one
+        Assert.Equal(local, shown);
+        Assert.True(unsaved);
+        Assert.False(panel);
+        Assert.Equal("The document is filed in Healdan as #1 v1, but its copy couldn’t be written here. The disk is full. "
+            + "Open it from Healdan to go on with it.", Assert.Single(errors));
+        Assert.False(File.Exists(Filed));
+        Assert.Equal(new[] { "save-new", "file", "closed" }, _helper.Routes); // the Helper lets the new copy go
+        Assert.Equal(Filed, (string?)Assert.Single(_helper.CallsTo(ChannelRoutes.Closed))["path"]);
     }
 
     [PdfViewerFact]
@@ -297,10 +337,7 @@ public sealed class SaveToHealdanTests : IDisposable
                 await gate.Task; // the first filing waits, so the close comes during it, and then fails
                 throw new InvalidOperationException();
             }
-            var temp = (string)body["tempPath"]!; // later ones file as the fake does
-            var path = _helper.AddCopy("Report", 1, "1", pdf: File.ReadAllBytes(temp));
-            File.Delete(temp);
-            return FakeHelper.Json(_helper.StateOf(path));
+            return await _helper.FileAsync(body); // later ones file as the fake does
         });
         var local = Local();
 
@@ -444,18 +481,14 @@ public sealed class SaveToHealdanTests : IDisposable
     [PdfViewerFact]
     public async Task A_close_during_a_move_that_waits_on_a_password_prompt_ends_the_wait_and_closes_the_window()
     {
-        // The Helper files an encrypted copy of a plain PDF, so the window has no password for it and the PdfViewer asks.
-        _helper.Answer(ChannelRoutes.File, body =>
-        {
-            File.Delete((string)body["tempPath"]!);
-            var path = _helper.AddCopy("Report", 1, "1", pdf: EncryptedPdf.Build());
-            return Task.FromResult<JsonNode>(FakeHelper.Json(_helper.StateOf(path)));
-        });
         var local = Local();
 
         var (filed, asking, open) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(local, _helper.Link());
+            // The new copy is written as an encrypted PDF, so the window has no password for it and the PdfViewer asks.
+            var write = window.WriteFile;
+            window.WriteFile = (target, pdf) => write(target, target == Filed ? EncryptedPdf.Build() : pdf);
             var flow = window.SaveNewAsync();
             await TestWindows.WaitForAsync(() => Visible<TextBox>(window, b => b.Name == "PART_PasswordTextBox") is not null);
             var waiting = !window.DocumentPanel.IsEnabled;
@@ -555,13 +588,16 @@ public sealed class SaveToHealdanTests : IDisposable
         {
             var (window, _) = await TestWindows.OpenAsync(local, _helper.Link());
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
-            // The copy written for Healdan is held, so a ⌘S waits behind it; a write after that one is held until the
-            // window has moved, as a slow one would be.
+            // The copy written for Healdan is held, so a ⌘S waits behind it; a write to the local file after that is held
+            // until the window has moved, as a slow one would be. The move's own write of the new copy goes through.
             var (copyWritten, laterWritten) = (new ManualResetEventSlim(), new ManualResetEventSlim());
             var writes = 0;
             window.WriteFile = (target, pdf) =>
             {
-                (Interlocked.Increment(ref writes) == 1 ? copyWritten : laterWritten).Wait();
+                if (target == local)
+                    laterWritten.Wait();
+                else if (Interlocked.Increment(ref writes) == 1)
+                    copyWritten.Wait();
                 AtomicFile.Write(target, pdf);
             };
             Task<bool> saving;
@@ -600,10 +636,7 @@ public sealed class SaveToHealdanTests : IDisposable
         _helper.Answer(ChannelRoutes.File, async body =>
         {
             await gate.Task; // the filing waits, so the window is moving while the commands below come
-            var temp = (string)body["tempPath"]!;
-            var path = _helper.AddCopy("Report", 1, "1", pdf: File.ReadAllBytes(temp));
-            File.Delete(temp);
-            return FakeHelper.Json(_helper.StateOf(path));
+            return await _helper.FileAsync(body);
         });
         var local = Local();
 
