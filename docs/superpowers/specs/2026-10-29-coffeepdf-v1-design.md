@@ -149,7 +149,8 @@ Healdan's process gives every milestone a design spec in its own repository, so 
    - `Name` is `CoffeePDF`;
    - `Open` launches it by bundle id;
    - `IsRunning` checks for its process;
-   - `LockExists` checks for its lock file (§6.8).
+   - `LockExists` checks for its lock file (§6.8);
+   - `CopyNames.IsAppFile` recognises that lock file's name, `.~coffeepdf.<copy file name>#`, as an app's file beside LibreOffice's `.~lock.<name>#` and `~$`, which is all it knows today (observed, Phase 2).
 2. **An app per kind.** Today `CopyCycle` and `HelperSession` take one `IOfficeApp` (LibreOffice), plus the default app for other files. They choose by kind instead:
    - PDFs go to CoffeePDF when it's available (item 5);
    - otherwise PDFs go to the default app, read-only, as today.
@@ -558,6 +559,75 @@ Helper differs from this spec. The owner chose the plan's recommendation each ti
 A note for the acceptance (§2.5): Save as New Version on a document with no new changes marks the next save as a
 version (`MarkNextVersion`), and `/v1/saved` answers `pending` until that save comes. So step 3 should add a markup
 before Save as New Version.
+
+### Phase 2 (built 2026-10-31)
+
+The plan's tasks (`docs/superpowers/plans/2026-10-30-phase-2-healdan-in-coffeepdf.md`) stand as written, as the record of
+what was planned. This is what the build showed, and what it changed. No owner's answer above changed.
+
+- **The tests (observed 2026-10-31).** No test failed in any run.
+  - Without the key, `CoffeePdf.Core.Tests` passed 163, and `CoffeePdf.Tests` passed 20 and skipped the 102 that need the
+    PdfViewer.
+  - With the key, the core's 163 passed, and the app's 121 passed and 1 skipped: the probe
+    `What_the_viewer_does_without_a_licence`.
+  - Five more runs of the app's PdfViewer tests (`--filter Category=PdfViewer`), which run a fake Helper's listener per
+    test in parallel, each passed 102 and skipped that 1.
+- **The package (observed 2026-10-31).** `packaging/mac/package.sh 0.2.0-phase2`, with the key and no signing identity
+  (ad-hoc, without the hardened runtime; Decision 4), made `CoffeePDF-0.2.0-phase2.dmg`, 46,635,525 bytes, sha256
+  `678491f03851a6817364fab9f1de59205575adc8f2285dbfa7b7c6d8baf5ac34`. `Contents/MacOS` holds the same six native arm64
+  files as Phase 1's. It is expected to run on the Mac that built it (Decision 4), but it has not been launched: the
+  owner's checks on the Mac do that, and they wait for the pull request (§8).
+- **What the build changed beyond the plan's code.** Each change came from a review of the build.
+  - *Closing and quitting (§6.8).*
+    - A closed window never writes a lock file, even when the Helper's answer to `/v1/state` comes after the close.
+    - A close waits for a save still writing before it lets the copy go. Each copy gets one lock removal and one
+      `/v1/closed`, after its last write. A save queued behind another writes nothing once its window has closed or begun
+      to move, and a move waits for a save still writing.
+    - Quitting waits for every copy's `/v1/closed`, including those of windows that had already closed. A second ⌘Q
+      while one waits does nothing.
+    - Save at the close prompt of a window that can't save (a read-only copy, or one whose save Healdan refused) is
+      Save As.
+  - *Filing (§6.6).*
+    - A `/v1/file` that gets no answer is "outcome unknown", not a failure. The window stays on its file with its changes
+      unsaved, the temporary file is left to the Helper, the Helper is marked away, and CoffeePDF says the document may
+      be in Healdan already. No Save panel is offered, since a second filing would make a duplicate.
+    - Open, Save As and Save to Healdan do nothing in a window that is closed or moving. A window closed during the copy
+      write files nothing and deletes the copy it wrote.
+    - An encrypted copy's password is carried across the move, so the new copy's next save still writes the author
+      (Phase 1's check 12b). A close during the move ends the wait for the new copy to load.
+    - A filing answered without the new copy's path gives no copy to open, rather than the Helper's temporary file.
+  - *Following a save (§6.4).* A follow ends on any error, logs it by its type and clears *Saving to Healdan…*, and
+    doesn't start in a closed window. Save as New Version with nothing to save says *The next save goes to Healdan as a
+    new version.* It neither saves nor follows, since the Helper has no change to send until a save comes. §2.5 step 3
+    still adds a markup first.
+  - *Modes and titles (§6.1).*
+    - A window that had the Helper's answer and then lost the Helper keeps the Helper's last title, not the file name
+      without `.pdf`. The row for Helper away describes a copy opened with no answer, and the last answer is the newer
+      version (`v2.2` after a save).
+    - A copy the Helper doesn't know is local, whether the window was asking or the Helper was away.
+  - *Settings and the first launch (§5).* A Healdan box whose write fails goes back to the stored setting, with no
+    dialog. An open Settings follows a change made elsewhere. The first launch writes the yes before it records the
+    question as asked, so a failed second write can't lose it.
+  - The log writes its times in the invariant culture.
+- **Follow-ups the build left.**
+  - Save at the close prompt, or at a quit's, while Save to Healdan writes its copy returns false, and the close or quit
+    is dropped without a word. Defer the close, or tell the user. Until then ⌘W or ⌘Q again works.
+  - A filing shows no progress, for up to 660 seconds, and ⌘Q during it does nothing.
+  - A close, and so a quit (which has no overall time limit), also waits for a save still taking its PdfViewer snapshot.
+    No run hung.
+  - A `/v1/new-version` that times out is worded "isn't running". A refused filing is logged twice.
+  - A second `Close()` on a window already closed is expected to do nothing; an `if (!_closed)` guard would say so.
+  - A move that begins while Open or Save to Healdan waits on a Helper window isn't re-checked after the answer (narrow).
+  - Two Save to Healdan flows at once need a Helper that breaks §6.3's rule, since it answers `cancel` to a second Save
+    window.
+- **For Healdan's milestone (Phase 3) and the acceptance (Phase 4).**
+  - The Helper's `CopyNames.IsAppFile` must recognise `.~coffeepdf.<copy file name>#` beside LibreOffice's lock (§4.4
+    item 1). It's Healdan's code, so nothing breaks in CoffeePDF without it, but the Helper may take the lock for a
+    stray file when it sets a copy aside.
+  - Confirm that the real Helper treats `"path": null` in `/v1/save-new` and `"replaces": null` in `/v1/file` as
+    missing. Only the fake Helper has seen them.
+  - The menu bar hiding the Healdan item is only checked headless. §2.5 step 7's walkthrough checks it on the Mac.
+  - Add a hand check of ⌘S then ⌘W on a large copy, since a close now waits for the save to finish.
 
 ### The owner's to-do list, to fill the pending rows
 
