@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
+using CoffeePdf.Core.Helper;
+using CoffeePdf.Core.Logging;
 using CoffeePdf.Core.Settings;
 
 namespace CoffeePdf.Tests;
@@ -18,6 +20,11 @@ public static class Headless
         var store = new SettingsStore(settings) { MarkupAuthor = Windows.TestWindows.Author };
         store.HealdanAsked = true; // so the first launch's question never shows over a test's window
         Environment.SetEnvironmentVariable(SettingsLocation.OverrideVariable, settings);
+        // The Helper's folders and the log go to folders of the run's own too. The real Helper, which may be running on
+        // the Mac the tests run on, is never reached, and an app window starts with the Helper away. The flows' tests
+        // give each window a fake Helper's link instead (FakeHelper.Link).
+        Environment.SetEnvironmentVariable(HelperFolders.DevRootVariable, Directory.CreateTempSubdirectory("coffeepdf-helper-").FullName);
+        Environment.SetEnvironmentVariable(CoffeeLog.OverrideVariable, Directory.CreateTempSubdirectory("coffeepdf-log-").FullName);
         return HeadlessUnitTestSession.StartNew(typeof(Headless));
     });
 

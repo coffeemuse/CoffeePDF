@@ -7,6 +7,8 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Files;
+using CoffeePdf.Core.Helper;
+using CoffeePdf.Core.Logging;
 using CoffeePdf.Core.Settings;
 using CoffeePdf.Dialogs;
 using CoffeePdf.Platform;
@@ -38,6 +40,12 @@ public partial class App : Application
 
     /// <summary>File › Open Recent's list (spec §2.1).</summary>
     public RecentDocuments Recent { get; private set; } = null!;
+
+    /// <summary>CoffeePDF's log (spec §6.9).</summary>
+    public CoffeeLog Log { get; private set; } = null!;
+
+    /// <summary>Healdan support, the Helper's folders and its channel (spec §5, §9). A test's window gets a fake Helper's instead.</summary>
+    public HealdanLink Healdan { get; private set; } = null!;
 
     /// <summary>The document windows open.</summary>
     internal IReadOnlyList<DocumentWindow> Windows => _windows;
@@ -75,6 +83,8 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
         Settings = new SettingsStore(SettingsLocation.Folder());
         Recent = new RecentDocuments(SettingsLocation.Folder());
+        Log = new CoffeeLog(CoffeeLog.Folder());
+        Healdan = new HealdanLink(Settings, HelperFolders.ForThisUser(), Log);
 
         // The app menu. macOS adds Services, Hide and Quit after these. Avalonia's own About Avalonia goes once the app
         // sets a menu, so About CoffeePDF opens macOS's About panel instead.
@@ -127,7 +137,8 @@ public partial class App : Application
             Recent.Remove(path); // a recent file that's gone, or no longer a PDF
             return;
         }
-        Recent.Add(path);
+        if (!Healdan.Folders.HoldsCopy(path))
+            Recent.Add(path); // Healdan's copies stay out (spec §6.10): the Helper deletes each once it's checked in
         var choice = WindowChoice.For(_windows.Select(w => w.FilePath).ToList(), path);
         switch (choice.Action)
         {
