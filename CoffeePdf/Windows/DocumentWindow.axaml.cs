@@ -49,6 +49,8 @@ public partial class DocumentWindow : Window
     private DateTimeOffset _openedAt;  // when the file was shown, for the lock file
     private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task _letGo = Task.CompletedTask; // the copies a save moved the window off are being let go until this is done
+    private bool _savingToHealdan;                // a save is being followed, and Healdan doesn't have it yet (spec §6.4)
+    private CancellationTokenSource? _following;  // stops the save being followed
 
     public DocumentWindow()
     {
@@ -106,6 +108,7 @@ public partial class DocumentWindow : Window
         ApplyMode();
         Closed += async (_, _) =>
         {
+            StopFollowing(); // following ends when the window closes (spec §6.4)
             var (path, document, lockHeld) = (_path, _document, _lockHeld);
             _lockHeld = false;
             await Task.WhenAll(_letGo, LetGoAsync(path, document, lockHeld));
@@ -152,6 +155,9 @@ public partial class DocumentWindow : Window
 
     /// <summary>Replaces the file with a save's bytes, on a pool thread. The tests replace it to hold a save mid-write.</summary>
     internal Action<string, byte[]> WriteFile { get; set; } = (target, pdf) => AtomicFile.Write(target, pdf);
+
+    /// <summary>The pause between questions while a save is followed. The tests replace it, so none waits for the real pauses.</summary>
+    internal Func<TimeSpan, CancellationToken, Task> Pause { get; set; } = Task.Delay;
 
     /// <summary>Shows <paramref name="path"/> in an empty window, in its mode (spec §6.2). A copy asks the Helper what it is.</summary>
     public void Load(string path)
@@ -420,13 +426,19 @@ public partial class DocumentWindow : Window
     }
 
     /// <summary>
-    /// After a save that worked: one that moved the window to another file lets the copy it left go, as a close would
-    /// (spec §6.6 step 3, §6.8), and takes the new file's mode (§6.1).
+    /// After a save that worked: a copy's save is followed to Healdan (spec §6.4). One that moved the window to another
+    /// file ends the following, lets the copy it left go, as a close would (§6.6 step 3, §6.8), and takes the new
+    /// file's mode (§6.1).
     /// </summary>
     private void AfterSave(string? previous)
     {
         if (_path == previous)
+        {
+            if (_document?.FollowsSaves == true)
+                Follow();
             return;
+        }
+        StopFollowing();
         var (document, lockHeld) = (_document, _lockHeld);
         _lockHeld = false;
         _letGo = Task.WhenAll(_letGo, LetGoAsync(previous, document, lockHeld)); // the window's Released waits for it
@@ -435,6 +447,84 @@ public partial class DocumentWindow : Window
         ApplyMode();
         if (_document.Mode == DocumentMode.Asking)
             _ = AskHelperAsync();
+    }
+
+    /// <summary>Follows the save just written to the copy until Healdan has it (spec §6.4). A newer save takes over.</summary>
+    private void Follow()
+    {
+        StopFollowing();
+        var following = _following = new CancellationTokenSource();
+        _savingToHealdan = true; // from the write on: the first answer can take 120 seconds
+        UpdateTitle();
+        _ = FollowAsync(_path!, following);
+    }
+
+    private async Task FollowAsync(string path, CancellationTokenSource following)
+    {
+        await SaveFollower.FollowAsync(stop => Healdan.Channel.SavedAsync(path, stop), state => OnSavedAnswer(path, state), OnHelperAway,
+            Pause, following.Token);
+        if (_following != following)
+            return; // a newer save, a close or a move has taken over
+        _following = null;
+        _savingToHealdan = false;
+        UpdateTitle();
+    }
+
+    private void StopFollowing()
+    {
+        _following?.Cancel();
+        _following = null;
+        _savingToHealdan = false;
+    }
+
+    /// <summary>An answer to <c>/v1/saved</c>: its version moves the title on, and a read-only one is a refused save (spec §6.9).</summary>
+    private void OnSavedAnswer(string path, CopyState state)
+    {
+        if (_document is null || _path != path)
+            return;
+        _document = _document.Answered(state);
+        _savingToHealdan = state.Known && state.Pending;
+        ApplyMode();
+    }
+
+    /// <summary>The Helper didn't answer: a copy's saves stay on this Mac until it's back, and its bar says so (spec §6.9).</summary>
+    private void OnHelperAway()
+    {
+        if (_document is null)
+            return;
+        _document = _document.Answered(null);
+        ApplyMode();
+    }
+
+    /// <summary>
+    /// Save as New Version (spec §6.5): the Helper sends the copy's next save as a version, and the changes are saved.
+    /// With nothing to save, the save already written is followed, and the Helper sends the version with the next.
+    /// With the Helper away, the version can't be asked for, so nothing is saved, and the user is told (Phase 2's plan,
+    /// question 9).
+    /// </summary>
+    internal async Task<bool> SaveAsNewVersionAsync()
+    {
+        if (_document is not { Mode: DocumentMode.Editable } document || _path is not { } path)
+            return false;
+        try
+        {
+            await Healdan.Channel.NewVersionAsync(path);
+        }
+        catch (HelperUnreachableException)
+        {
+            OnHelperAway();
+            await TellAsync($"“{document.NameForHealdan}” couldn’t be saved as a new version.", "Healdan Helper isn’t running. Try again once it is.");
+            return false;
+        }
+        catch (HelperErrorException e)
+        {
+            await TellAsync($"“{document.NameForHealdan}” couldn’t be saved as a new version.", e.Message);
+            return false;
+        }
+        if (HasUnsavedChanges)
+            return await SaveAsync();
+        Follow();
+        return true;
     }
 
     /// <summary>
@@ -546,7 +636,7 @@ public partial class DocumentWindow : Window
 
     private void OnRecentChanged(object? sender, EventArgs e) => ShowRecent(App.Current.Recent.Paths);
 
-    private void UpdateTitle() => Title = _document?.Title(HasUnsavedChanges, saving: false) ?? DocumentTitle.For(_path, HasUnsavedChanges);
+    private void UpdateTitle() => Title = _document?.Title(HasUnsavedChanges, _savingToHealdan) ?? DocumentTitle.For(_path, HasUnsavedChanges);
 
     private async void OnOpen(object? sender, EventArgs e)
     {
