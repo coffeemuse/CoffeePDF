@@ -135,20 +135,42 @@ public sealed class HealdanSaveTests : IDisposable
     {
         var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
 
-        var (saved, routes) = await Headless.RunAsync(async () =>
+        var (saved, routes, errors) = await Headless.RunAsync(async () =>
         {
-            var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+            var (window, errorList) = await TestWindows.OpenAsync(copy, _helper.Link());
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
             var result = await window.SaveAsNewVersionAsync();
             await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.Saved).Count == 1);
             await CloseAsync(window);
-            return (result, _helper.Routes);
+            return (result, _helper.Routes, errorList.ToList());
         });
 
         Assert.True(saved);
+        Assert.Empty(errors);
         Assert.Equal(new[] { "state", "new-version", "saved", "closed" }, routes);
         Assert.Equal(new[] { copy }, _helper.CallsTo(ChannelRoutes.NewVersion).Select(b => (string?)b["path"]));
         Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(copy), 0)).Author);
+    }
+
+    [PdfViewerFact]
+    public async Task Save_as_New_Version_with_nothing_to_save_says_the_next_save_goes_as_the_version()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+
+        var (asked, errors, title) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(copy, _helper.Link());
+            var result = await window.SaveAsNewVersionAsync();
+            var state = (result, errorList.ToList(), window.Title);
+            await CloseAsync(window);
+            return state;
+        });
+
+        Assert.True(asked);
+        Assert.Equal("The next save goes to Healdan as a new version. There are no changes to save yet.", Assert.Single(errors));
+        Assert.Equal("Settlement Agreement #1234 v2.1", title); // no save is on its way
+        Assert.Equal(new[] { "state", "new-version", "closed" }, _helper.Routes);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
     }
 
     [PdfViewerFact]
@@ -211,14 +233,17 @@ public sealed class HealdanSaveTests : IDisposable
             try
             {
                 await TestWindows.WaitForAsync(() => held.Reached);
-                await CloseAsync(window);
+                window.AskToSave = () => Task.FromResult(SaveChoice.DontSave);
+                await window.CloseWithPromptAsync(); // the window lets the copy go once the save is written
             }
             finally
             {
                 held.Release();
             }
             // The save ends here, and a follow would have said so in the title as it began.
-            return (await saving, window.Title);
+            var state = (await saving, window.Title);
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            return state;
         });
 
         Assert.True(saved);

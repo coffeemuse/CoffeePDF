@@ -17,7 +17,8 @@ namespace CoffeePdf.Windows;
 /// Every save goes through <see cref="SaveToAsync"/>. The PdfViewer saves to memory, <see cref="MarkupAuthor"/> writes
 /// the author into the markups made here, and <see cref="AtomicFile"/> renames the result over the file. The
 /// PdfViewer's own saving is off, so its toolbar and shortcuts can't save around that. Saves run one at a time: one
-/// that starts while another is writing waits, and then saves the document as it is by then.
+/// that starts while another is writing waits, and then saves the document as it is by then, unless the window has
+/// closed or begun moving to a new copy meanwhile. A close, and a move, wait for a save still writing.
 /// </para>
 /// <para>
 /// A Healdan copy opens in its mode (spec §6.1, §6.2), which <see cref="WindowDocument"/> decides from the Helper's
@@ -130,6 +131,10 @@ public partial class DocumentWindow : Window
         Closed += async (_, _) =>
         {
             StopFollowing(); // following ends when the window closes (spec §6.4)
+            // A save still writing finishes first, so the copy isn't let go under it (spec §6.8), and one that moves the
+            // window off the copy lets that go itself. A save waiting behind it writes nothing, now the window has closed.
+            await _oneSaveAtATime.WaitAsync();
+            _oneSaveAtATime.Release();
             var (path, document, lockHeld) = (_path, _document, _lockHeld);
             _lockHeld = false;
             await Task.WhenAll(_letGo, LetGoAsync(path, document, lockHeld));
@@ -249,6 +254,11 @@ public partial class DocumentWindow : Window
         await _oneSaveAtATime.WaitAsync();
         try
         {
+            // A save that waited behind another writes nothing once the window is moving to a new copy, or has closed:
+            // its file is the one the window is leaving or has let go (spec §6.6 step 3, §6.8). The close prompt's own
+            // Save runs before the window closes, so it still saves.
+            if (!asCopy && (_moving || _closed))
+                return false;
             // Whether the window's own file lacks changes, read before the snapshot clears IsDirty: a copy written for
             // Healdan leaves them unsaved there.
             var unsaved = Viewer.IsDirty || _editedSinceSave || _saveFailed || _writtenForHealdan;
@@ -470,13 +480,23 @@ public partial class DocumentWindow : Window
     /// </summary>
     private async Task MoveToCopyAsync(CopyState filed)
     {
-        StopFollowing();
+        // No save writes across the move: one still writing finishes first, and one waiting behind it then finds the
+        // window moving and writes nothing. The copy written for Healdan was written before the move began.
+        await _oneSaveAtATime.WaitAsync();
         var (oldPath, oldDocument, oldLock) = (_path, _document, _lockHeld);
-        var password = Viewer.Password ?? _typedPassword;
-        _lockHeld = false;
         var loaded = _loadWaiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Show(filed.Path, WindowDocument.Opened(filed.Path, healdan: true, inCopies: true).Answered(filed));
-        _typedPassword = password; // Show cleared it, and the new copy's saves need it to write the author
+        try
+        {
+            StopFollowing(); // after the wait: a save that finished meanwhile followed the old copy
+            var password = Viewer.Password ?? _typedPassword;
+            _lockHeld = false;
+            Show(filed.Path, WindowDocument.Opened(filed.Path, healdan: true, inCopies: true).Answered(filed));
+            _typedPassword = password; // Show cleared it, and the new copy's saves need it to write the author
+        }
+        finally
+        {
+            _oneSaveAtATime.Release();
+        }
         if (_closeWhenMoved)
             loaded.TrySetResult(false); // a close came during the filing, before there was a load to end
         var shown = await loaded.Task;
@@ -600,8 +620,9 @@ public partial class DocumentWindow : Window
     }
 
     /// <summary>
-    /// Closes the window, first asking to save its changes, if it has any (spec §6.8). Returns false if it stayed
-    /// open: the user cancelled, or the save failed.
+    /// Closes the window, first asking to save its changes, if it has any (spec §6.8). Where the window's mode doesn't
+    /// allow saving, as for a copy whose save Healdan refused (§6.9), Save is Save As instead. Returns false if it
+    /// stayed open: the user cancelled, or the save failed or didn't happen.
     /// </summary>
     public async Task<bool> CloseWithPromptAsync()
     {
@@ -615,7 +636,7 @@ public partial class DocumentWindow : Window
             if (HasUnsavedChanges)
             {
                 var choice = await AskToSave();
-                if (choice == SaveChoice.Cancel || (choice == SaveChoice.Save && !await SaveAsync()))
+                if (choice == SaveChoice.Cancel || (choice == SaveChoice.Save && !await (Allowed.Save ? SaveAsync() : SaveAsAsync())))
                     return false;
             }
         }
@@ -792,9 +813,9 @@ public partial class DocumentWindow : Window
 
     /// <summary>
     /// Save as New Version (spec §6.5): the Helper sends the copy's next save as a version, and the changes are saved.
-    /// With nothing to save, the save already written is followed, and the Helper sends the version with the next.
-    /// With the Helper away, the version can't be asked for, so nothing is saved, and the user is told (Phase 2's plan,
-    /// question 9).
+    /// With nothing to save, nothing is saved or followed, since the Helper would say a save is pending until the next
+    /// one comes: the user is told that save goes as the version. With the Helper away, the version can't be asked
+    /// for, so nothing is saved, and the user is told (Phase 2's plan, question 9).
     /// </summary>
     internal async Task<bool> SaveAsNewVersionAsync()
     {
@@ -819,7 +840,7 @@ public partial class DocumentWindow : Window
             return false; // the window closed, or moved to another file, while the Helper was answering
         if (HasUnsavedChanges)
             return await SaveAsync();
-        Follow();
+        await TellAsync("The next save goes to Healdan as a new version.", "There are no changes to save yet.");
         return true;
     }
 

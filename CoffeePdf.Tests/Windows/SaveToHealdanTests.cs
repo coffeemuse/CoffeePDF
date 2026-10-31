@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using CoffeePdf.Core.Documents;
+using CoffeePdf.Core.Files;
 using CoffeePdf.Core.Helper;
 using CoffeePdf.Core.Locks;
 using CoffeePdf.Core.Pdf;
@@ -527,7 +528,8 @@ public sealed class SaveToHealdanTests : IDisposable
             try
             {
                 await TestWindows.WaitForAsync(() => held.Reached);
-                await CloseAsync(window); // Don't Save, while the copy is being written
+                window.AskToSave = () => Task.FromResult(SaveChoice.DontSave);
+                await window.CloseWithPromptAsync(); // Don't Save, while the copy is being written
             }
             finally
             {
@@ -542,6 +544,53 @@ public sealed class SaveToHealdanTests : IDisposable
         Assert.False(left); // the Helper was never handed it, so the window deletes it
         Assert.Equal(new[] { "save-new" }, _helper.Routes);
         Assert.Contains("Save to Healdan stopped: the window closed", log);
+    }
+
+    [PdfViewerFact]
+    public async Task A_save_waiting_behind_the_copy_written_for_Healdan_leaves_the_window_on_the_new_copy()
+    {
+        var local = Local();
+
+        var (saved, shown, locked) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(local, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            // The copy written for Healdan is held, so a ⌘S waits behind it; a write after that one is held until the
+            // window has moved, as a slow one would be.
+            var (copyWritten, laterWritten) = (new ManualResetEventSlim(), new ManualResetEventSlim());
+            var writes = 0;
+            window.WriteFile = (target, pdf) =>
+            {
+                (Interlocked.Increment(ref writes) == 1 ? copyWritten : laterWritten).Wait();
+                AtomicFile.Write(target, pdf);
+            };
+            Task<bool> saving;
+            try
+            {
+                var flow = window.SaveNewAsync();
+                await TestWindows.WaitForAsync(() => Volatile.Read(ref writes) == 1);
+                saving = window.SaveAsync(); // ⌘S, waiting behind the copy's write
+                // The copy's save ends by carrying Save to Healdan on into the filing, so the window is moving by the
+                // time the ⌘S, whose turn comes on a later dispatcher job, resumes.
+                copyWritten.Set();
+                Assert.True(await flow.WaitAsync(TimeSpan.FromSeconds(10)));
+            }
+            finally
+            {
+                copyWritten.Set();
+                laterWritten.Set();
+            }
+            var state = (await saving, window.FilePath, File.Exists(CopyLock.PathFor(Filed)));
+            await CloseAsync(window);
+            return state;
+        });
+
+        Assert.False(saved);
+        Assert.Equal(Filed, shown);
+        Assert.True(locked);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(local));
+        Assert.Equal(new[] { "save-new", "file", "adopted", "closed" }, _helper.Routes);
+        Assert.Equal(Filed, (string?)Assert.Single(_helper.CallsTo(ChannelRoutes.Closed))["path"]);
     }
 
     [PdfViewerFact]

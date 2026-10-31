@@ -189,6 +189,156 @@ public sealed class HealdanCloseTests : IDisposable
     }
 
     [PdfViewerFact]
+    public async Task A_close_during_a_save_lets_the_copy_go_only_once_the_save_is_written()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        int? notesWhenTold = null;
+        _helper.Answer(ChannelRoutes.Closed, _ =>
+        {
+            notesWhenTold = PdfAnnotations.Read(File.ReadAllBytes(copy), 0).Count;
+            return Task.FromResult<JsonNode>(new JsonObject());
+        });
+
+        var (lockedWhileWriting, releasedWhileWriting, saved) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            var closed = false;
+            window.Closed += (_, _) => closed = true;
+            window.AskToSave = () => Task.FromResult(SaveChoice.DontSave);
+            var held = TestWindows.HoldWrites(window);
+            var saving = window.SaveAsync();
+            bool locked, early;
+            try
+            {
+                await TestWindows.WaitForAsync(() => held.Reached);
+                await window.CloseWithPromptAsync(); // Don't Save, while the save is writing the copy
+                await TestWindows.WaitForAsync(() => closed);
+                (locked, early) = (File.Exists(CopyLock.PathFor(copy)), window.Released.IsCompleted);
+            }
+            finally
+            {
+                held.Release();
+            }
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            return (locked, early, await saving);
+        });
+
+        Assert.True(lockedWhileWriting);
+        Assert.False(releasedWhileWriting);
+        Assert.True(saved);
+        Assert.Equal(1, notesWhenTold); // the Helper heard only once the save was in the copy
+        Assert.Equal(new[] { copy }, ClosedPaths);
+        Assert.False(File.Exists(CopyLock.PathFor(copy)));
+    }
+
+    [PdfViewerFact]
+    public async Task A_close_during_a_save_to_a_local_file_lets_the_copy_go_once()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        var local = Path.Combine(_dir, "Kept here.pdf");
+
+        var saved = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            window.AskToSave = () => Task.FromResult(SaveChoice.DontSave);
+            var held = TestWindows.HoldWrites(window);
+            var saving = window.SaveToAsync(local); // as the Mac's Save panel does
+            try
+            {
+                await TestWindows.WaitForAsync(() => held.Reached);
+                await window.CloseWithPromptAsync(); // Don't Save, while the save is writing the local file
+            }
+            finally
+            {
+                held.Release();
+            }
+            var result = await saving;
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            // Every copy the window began letting go is let go by now, so a second /v1/closed would have been heard.
+            await TestWindows.WaitForAsync(() => !window.HoldsCopy);
+            return result;
+        });
+
+        Assert.True(saved);
+        Assert.Equal(new[] { copy }, ClosedPaths);
+        Assert.False(File.Exists(CopyLock.PathFor(copy)));
+        Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(local), 0)).Author);
+    }
+
+    [PdfViewerFact]
+    public async Task A_save_still_waiting_when_the_window_closes_writes_nothing()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+
+        var (first, second, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(copy, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            window.AskToSave = () => Task.FromResult(SaveChoice.DontSave);
+            var held = TestWindows.HoldWrites(window);
+            var saving = window.SaveAsync();
+            Task<bool> waiting;
+            try
+            {
+                await TestWindows.WaitForAsync(() => held.Reached);
+                await window.Viewer.AddStickyNoteAsync(0, 200, 200, "After the save began");
+                waiting = window.SaveAsync(); // ⌘S again, waiting behind the first
+                await window.CloseWithPromptAsync(); // Don't Save
+            }
+            finally
+            {
+                held.Release();
+            }
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            return (await saving, await waiting, errorList.ToList());
+        });
+
+        Assert.True(first);
+        Assert.False(second);
+        Assert.Empty(errors); // it didn't try, so there's no failure to show
+        Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(copy), 0)); // the note made after the first save began isn't written
+        Assert.Equal(new[] { copy }, ClosedPaths);
+    }
+
+    [PdfViewerFact]
+    public async Task Save_at_the_prompt_of_a_copy_whose_save_was_refused_saves_it_as_a_new_document()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        var filed = Path.Combine(_helper.Folders.Copies, "Settlement Agreement #1 v1.pdf");
+        _helper.Answer(ChannelRoutes.SaveNew, new JsonObject
+        {
+            ["action"] = "save",
+            ["folderId"] = 42,
+            ["name"] = "Settlement Agreement",
+            ["format"] = "pdf",
+            ["tempPath"] = Path.Combine(_helper.Folders.Temp, "save-new.pdf"),
+        });
+
+        var (mode, closed) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            // Healdan refused a save (spec §6.9): the Helper answers the copy read-only now, and the note is unsaved.
+            _helper.SetState(_helper.StateOf(copy) with { ReadOnly = true });
+            await window.AskHelperAsync();
+            var refused = window.Document?.Mode;
+            window.AskToSave = () => Task.FromResult(SaveChoice.Save);
+            var result = await window.CloseWithPromptAsync();
+            await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+            return (refused, result);
+        });
+
+        Assert.Equal(DocumentMode.ReadOnly, mode);
+        Assert.True(closed);
+        Assert.Equal(new[] { "state", "state", "save-new", "file", "closed", "adopted", "closed" }, _helper.Routes);
+        Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(filed), 0)).Author);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
+        Assert.Equal(new[] { copy, filed }, ClosedPaths);
+    }
+
+    [PdfViewerFact]
     public async Task A_window_that_moved_off_a_copy_is_released_only_once_the_Helper_has_heard()
     {
         var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
