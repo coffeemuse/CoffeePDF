@@ -146,4 +146,82 @@ public sealed class HealdanCloseTests : IDisposable
         Assert.True(held);
         Assert.Equal(new[] { first, second }.Order(), told.Order());
     }
+
+    [PdfViewerFact]
+    public async Task Quitting_waits_for_the_Helper_to_hear_of_an_edited_copy_its_prompt_closed()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        var heard = new TaskCompletionSource<JsonNode>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.Closed, _ => heard.Task);
+
+        var (doneBeforeHeard, told) = await Headless.RunAsync(async () =>
+        {
+            try
+            {
+                var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+                window.AskToSave = () => Task.FromResult(SaveChoice.Save);
+                await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+                // As the app keeps them: the windows still open, and the Released of each that has closed.
+                List<DocumentWindow> open = [window];
+                List<Task> releases = [];
+                window.Closed += (_, _) =>
+                {
+                    open.Remove(window);
+                    releases.Add(window.Released);
+                };
+
+                var quit = App.CloseAllAndWaitAsync(() => open, () => [.. releases]);
+                await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.Closed).Count == 1);
+                var early = quit.IsCompleted;
+                heard.SetResult(new JsonObject());
+                var closedAll = await quit.WaitAsync(TimeSpan.FromSeconds(10));
+                return (early, closedAll);
+            }
+            finally
+            {
+                heard.TrySetResult(new JsonObject()); // a failing test mustn't leave the fake Helper holding a call
+            }
+        });
+
+        Assert.False(doneBeforeHeard);
+        Assert.True(told);
+        Assert.Equal(new[] { copy }, ClosedPaths);
+    }
+
+    [PdfViewerFact]
+    public async Task A_window_that_moved_off_a_copy_is_released_only_once_the_Helper_has_heard()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        var local = Path.Combine(_dir, "Kept here.pdf");
+        var heard = new TaskCompletionSource<JsonNode>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.Closed, _ => heard.Task);
+
+        var (holdingWhileTold, doneBeforeHeard, holdingAfter) = await Headless.RunAsync(async () =>
+        {
+            try
+            {
+                var (window, _) = await TestWindows.OpenAsync(copy, _helper.Link());
+                await window.SaveToAsync(local);
+                await TestWindows.WaitForAsync(() => _helper.CallsTo(ChannelRoutes.Closed).Count == 1);
+                var holding = window.HoldsCopy;
+                var closed = false;
+                window.Closed += (_, _) => closed = true;
+                window.Close();
+                await TestWindows.WaitForAsync(() => closed);
+                var early = window.Released.IsCompleted;
+                heard.SetResult(new JsonObject());
+                await window.Released.WaitAsync(TimeSpan.FromSeconds(10));
+                return (holding, early, window.HoldsCopy);
+            }
+            finally
+            {
+                heard.TrySetResult(new JsonObject()); // a failing test mustn't leave the fake Helper holding a call
+            }
+        });
+
+        Assert.True(holdingWhileTold);
+        Assert.False(doneBeforeHeard);
+        Assert.False(holdingAfter);
+        Assert.Equal(new[] { copy }, ClosedPaths);
+    }
 }

@@ -32,6 +32,10 @@ public partial class App : Application
 
     private bool _quitConfirmed; // the windows with changes have been asked: the shutdown now goes through
 
+    private bool _quitting; // a quit is running: it ends CoffeePDF itself, and another request starts nothing
+
+    private readonly List<Task> _releases = []; // the closed windows' Released, so a quit waits for each, whoever closed it
+
     /// <summary>The running app, from anywhere in it.</summary>
     public static new App Current => (App)Application.Current!;
 
@@ -211,21 +215,46 @@ public partial class App : Application
 
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
-        // Windows with changes ask first, and every copy is let go before CoffeePDF ends (spec §6.8).
-        if (_quitConfirmed || !_windows.Any(w => w.HasUnsavedChanges || w.HoldsCopy))
+        // Windows with changes ask first, and every copy is let go before CoffeePDF ends (spec §6.8): also one a closed
+        // window is still letting go, and a quit running already, which calls Shutdown itself when it is done.
+        var mustWait = _quitting || _releases.Any(r => !r.IsCompleted) || _windows.Any(w => w.HasUnsavedChanges || w.HoldsCopy);
+        if (_quitConfirmed || !mustWait)
             return;
         e.Cancel = true;
+        if (_quitting)
+            return;
+        _quitting = true;
         _ = QuitAsync(sender as IClassicDesktopStyleApplicationLifetime);
     }
 
     private async Task QuitAsync(IClassicDesktopStyleApplicationLifetime? desktop)
     {
-        if (!await CloseAllEditedAsync(() => _windows))
-            return;
+        try
+        {
+            if (!await CloseAllAndWaitAsync(() => _windows, () => [.. _releases]))
+                return;
+            _quitConfirmed = true;
+            desktop?.Shutdown();
+        }
+        finally
+        {
+            _quitting = false;
+        }
+    }
+
+    /// <summary>
+    /// For a quit: closes every window, asking those with changes in turn (spec §6.8), and waits until the Helper has
+    /// heard of every copy that closed, <paramref name="releases"/> being the closed windows' <c>Released</c>, those
+    /// closed by the prompts included. Returns false if a window stayed open.
+    /// </summary>
+    internal static async Task<bool> CloseAllAndWaitAsync(Func<IReadOnlyList<DocumentWindow>> windows, Func<IReadOnlyList<Task>> releases)
+    {
+        if (!await CloseAllEditedAsync(windows))
+            return false;
         // No window still open has changes, and nothing awaits before they're closed, so none can be edited in between.
-        await CloseAndLetGoAsync([.. _windows]);
-        _quitConfirmed = true;
-        desktop?.Shutdown();
+        await CloseAndLetGoAsync([.. windows()]);
+        await Task.WhenAll(releases());
+        return true;
     }
 
     /// <summary>
@@ -248,7 +277,12 @@ public partial class App : Application
     private DocumentWindow NewWindow()
     {
         var window = new DocumentWindow();
-        window.Closed += (_, _) => _windows.Remove(window);
+        window.Closed += (_, _) =>
+        {
+            _windows.Remove(window);
+            _releases.RemoveAll(r => r.IsCompleted);
+            _releases.Add(window.Released);
+        };
         _windows.Add(window);
         if (_healdanQuestionDue)
         {

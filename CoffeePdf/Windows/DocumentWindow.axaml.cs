@@ -48,6 +48,7 @@ public partial class DocumentWindow : Window
     private bool _askingHelper;        // a /v1/state for the file is on its way
     private DateTimeOffset _openedAt;  // when the file was shown, for the lock file
     private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Task _letGo = Task.CompletedTask; // the copies a save moved the window off are being let go until this is done
 
     public DocumentWindow()
     {
@@ -107,7 +108,7 @@ public partial class DocumentWindow : Window
         {
             var (path, document, lockHeld) = (_path, _document, _lockHeld);
             _lockHeld = false;
-            await LetGoAsync(path, document, lockHeld);
+            await Task.WhenAll(_letGo, LetGoAsync(path, document, lockHeld));
             _released.TrySetResult();
         };
     }
@@ -131,11 +132,14 @@ public partial class DocumentWindow : Window
     /// <summary>The file's mode and what the Helper last said of it, or null while the window is empty.</summary>
     internal WindowDocument? Document => _document;
 
-    /// <summary>Done once the closed window has let its copy go (spec §6.8), and at once for a window without one.</summary>
+    /// <summary>
+    /// Done once the closed window has let its copy go, and any copy a save moved it off (spec §6.8), and at once for a
+    /// window without one.
+    /// </summary>
     internal Task Released => _released.Task;
 
-    /// <summary>Whether the window has a copy to let go when it closes.</summary>
-    internal bool HoldsCopy => _lockHeld || _document?.TellsHelper == true;
+    /// <summary>Whether the window has a copy to let go when it closes, or is letting one go.</summary>
+    internal bool HoldsCopy => _lockHeld || _document?.TellsHelper == true || !_letGo.IsCompleted;
 
     /// <summary>Whether the document has changes its file doesn't.</summary>
     public bool HasUnsavedChanges => Viewer.HasDocument && (Viewer.IsDirty || _editedSinceSave || _saveFailed || _savesRunning > 0);
@@ -425,7 +429,7 @@ public partial class DocumentWindow : Window
             return;
         var (document, lockHeld) = (_document, _lockHeld);
         _lockHeld = false;
-        _ = LetGoAsync(previous, document, lockHeld);
+        _letGo = Task.WhenAll(_letGo, LetGoAsync(previous, document, lockHeld)); // the window's Released waits for it
         _loads++; // an answer about the file the window left is dropped
         _document = WindowDocument.Opened(_path!, Healdan.Enabled, Healdan.Folders.HoldsCopy(_path!));
         ApplyMode();
