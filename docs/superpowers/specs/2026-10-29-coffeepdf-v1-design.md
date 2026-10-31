@@ -185,10 +185,10 @@ Everything in this section applies with Healdan support on, except where it says
 
 | Mode | When | Title | Markup | Healdan menu |
 |---|---|---|---|---|
-| Local | Any file outside the Helper's `Copies/` folder | The file's name | On | Save to Healdan; Properties (which runs Save to Healdan) |
+| Local | Any file outside the Helper's `Copies/` folder, or one in it that the Helper doesn't know | The file's name | On | Save to Healdan; Properties (which runs Save to Healdan) |
 | Healdan, editable | A copy checked out to this computer | The Helper's `title`, as it is: `Settlement Agreement #1234 v2.1` | On | Everything |
 | Healdan, read-only | A read-only open, or a document held elsewhere | The Helper's `title`, `Settlement Agreement #1234 v2.1 (read-only)`, plus a bar: *Read-only — checked out by Jane* | Off | Save as New Document |
-| Healdan, Helper away | A copy in `Copies/` while the channel doesn't answer | The copy's file name without `.pdf`, which is what the Helper's `title` would be | On, except for a read-only copy | Off, with a bar (§6.9) |
+| Healdan, Helper away | A copy in `Copies/` while the channel doesn't answer | The Helper's last `title` for this window, if it had an answer; otherwise the copy's file name without `.pdf`, which is what the Helper's `title` would be | On, except for a read-only copy | Off, with a bar (§6.9) |
 
 - **The title** is the Helper's, as the LibreOffice extension shows it, with CoffeePDF's *Edited* and *Saving to Healdan…* after it. (owner, 2026-10-30)
 - **The read-only bar** names the holder. The Helper's state names only the person, so the computer waits for §4.4 item 9. (owner, 2026-10-30)
@@ -218,7 +218,7 @@ With Healdan support off, a file in the Helper's `Copies/` folder opens read-onl
   2. CoffeePDF then calls `/v1/saved {path}` and sets the title from the answer, such as `#1234 v2.2`.
 - **From the save's write until `/v1/saved` answers other than `pending`,** the title shows a small *Saving to Healdan…* indicator, since the first answer can take 120 seconds. (owner, 2026-10-30)
   - CoffeePDF asks again after 2, 5 and 15 seconds, then 30, then every 60, as the LibreOffice extension does. It keeps asking the same way while the Helper can't be reached.
-  - Following ends when the window closes, when a newer save takes over, or when the file is saved elsewhere.
+  - Following ends when the window closes, when a newer save takes over, when the file is saved elsewhere, or when the Helper answers with an error.
 - **The PdfViewer's AutoSave stays off,** because each edit would otherwise become a snapshot. (call)
 
 Phase 0 found the temporary file and the rename (§16 row 2). The owner chose to have the Helper's watch handle them, rather than writing in place (§16 Decision 3).
@@ -226,6 +226,8 @@ Phase 0 found the temporary file and the rename (§16 row 2). The owner chose to
 ### 6.5 Save as New Version
 
 The Healdan menu's Save as New Version calls `/v1/new-version {path}`, then saves. The Helper sends that save as a version, giving `#1234 v3`.
+
+With no unsaved changes it saves nothing and follows nothing: it says *The next save goes to Healdan as a new version.*, since the Helper has nothing new to send until a save comes (§16, Phase 2).
 
 With the Helper away, the version can't be asked for, so CoffeePDF says so and doesn't save. The LibreOffice extension saves locally without saying. (owner, 2026-10-30)
 
@@ -596,10 +598,11 @@ what was planned. This is what the build showed, and what it changed. No owner's
     - An encrypted copy's password is carried across the move, so the new copy's next save still writes the author
       (Phase 1's check 12b). A close during the move ends the wait for the new copy to load.
     - A filing answered without the new copy's path gives no copy to open, rather than the Helper's temporary file.
-  - *Following a save (§6.4).* A follow ends on any error, logs it by its type and clears *Saving to Healdan…*, and
-    doesn't start in a closed window. Save as New Version with nothing to save says *The next save goes to Healdan as a
-    new version.* It neither saves nor follows, since the Helper has no change to send until a save comes. §2.5 step 3
-    still adds a markup first.
+  - *Following a save (§6.4).* A follow that ends on an unexpected exception logs it by its type, and every ending
+    clears *Saving to Healdan…*. A follow doesn't start in a closed window. Save as New Version with nothing to save
+    says *The next save goes to Healdan as a new version.* It neither saves nor follows, since the Helper has no change
+    to send until a save comes. The owner may prefer a save that writes the unchanged file, as §6.5 first had it. §2.5
+    step 3 still adds a markup first.
   - *Modes and titles (§6.1).*
     - A window that had the Helper's answer and then lost the Helper keeps the Helper's last title, not the file name
       without `.pdf`. The row for Helper away describes a copy opened with no answer, and the last answer is the newer
