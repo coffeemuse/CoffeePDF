@@ -15,7 +15,8 @@ public static class Headless
         // The app's settings and Open Recent go to a folder of the run's own, never the real one. Its Markup author is
         // set before the app starts, so no save in a test falls back to the account's full name (CLAUDE.md).
         var settings = Directory.CreateTempSubdirectory("coffeepdf-settings-").FullName;
-        new SettingsStore(settings).MarkupAuthor = Windows.TestWindows.Author;
+        var store = new SettingsStore(settings) { MarkupAuthor = Windows.TestWindows.Author };
+        store.HealdanAsked = true; // so the first launch's question never shows over a test's window
         Environment.SetEnvironmentVariable(SettingsLocation.OverrideVariable, settings);
         return HeadlessUnitTestSession.StartNew(typeof(Headless));
     });

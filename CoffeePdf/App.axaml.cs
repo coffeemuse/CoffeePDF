@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using CoffeePdf.Core.Documents;
 using CoffeePdf.Core.Files;
 using CoffeePdf.Core.Settings;
+using CoffeePdf.Dialogs;
 using CoffeePdf.Platform;
 using CoffeePdf.Windows;
 
@@ -43,6 +44,31 @@ public partial class App : Application
 
     /// <summary>The name each save writes into new markups: the one set in Settings, else the macOS full name (spec §5).</summary>
     public string MarkupAuthor => Settings.MarkupAuthor ?? _fullName.Value;
+
+    /// <summary>Whether the Healdan Helper is installed, for the first launch's question (spec §5).</summary>
+    internal IHelperInstall HelperInstall { get; set; } = new MacHelperInstall();
+
+    private bool _healdanQuestionDue = true; // the first window this run shows asks, if the question is still to ask
+
+    /// <summary>
+    /// At the first launch with the Helper installed, asks once over <paramref name="owner"/> whether to use CoffeePDF
+    /// with Healdan (spec §5). Turning support on raises <see cref="SettingsStore.HealdanEnabledChanged"/>, which the
+    /// windows follow.
+    /// </summary>
+    private async Task AskAboutHealdanAsync(Window owner)
+    {
+        try
+        {
+            await FirstLaunch.AskAboutHealdanAsync(Settings, HelperInstall.IsInstalled, async () =>
+                await MessageDialog.ShowAsync(owner, "Use CoffeePDF with Healdan?",
+                    "CoffeePDF can open and save documents in Healdan, through Healdan Helper. You can change this in Settings.",
+                    ["Not Now", "Use with Healdan"]) == "Use with Healdan");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // settings.json can't be written: the question comes again at the next launch, and nothing else is lost.
+        }
+    }
 
     public override void Initialize()
     {
@@ -200,6 +226,11 @@ public partial class App : Application
         var window = new DocumentWindow();
         window.Closed += (_, _) => _windows.Remove(window);
         _windows.Add(window);
+        if (_healdanQuestionDue)
+        {
+            _healdanQuestionDue = false;
+            window.Opened += async (_, _) => await AskAboutHealdanAsync(window);
+        }
         return window;
     }
 }

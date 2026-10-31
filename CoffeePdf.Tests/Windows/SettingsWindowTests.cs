@@ -118,4 +118,49 @@ public sealed class SettingsWindowTests : IDisposable
 
         Assert.True(closed);
     }
+
+    [Fact]
+    public async Task The_Healdan_box_shows_support_and_keeps_a_change()
+    {
+        var store = new SettingsStore(_dir);
+        var changes = 0;
+        store.HealdanEnabledChanged += (_, _) => changes++;
+
+        var (before, after) = await Headless.RunAsync(() =>
+        {
+            var window = new SettingsWindow(store, "Default Name", new FakeDefaultApp(true, true));
+            var shown = window.HealdanBox.IsChecked;
+            window.HealdanBox.IsChecked = true;
+            return Task.FromResult((shown, store.HealdanEnabled));
+        });
+
+        Assert.False(before);
+        Assert.True(after);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public async Task Healdan_support_that_cant_be_kept_leaves_the_box_and_nothing_crashes()
+    {
+        var store = new SettingsStore(_dir);
+        var mode = File.GetUnixFileMode(_dir);
+
+        var shown = await Headless.RunAsync(() =>
+        {
+            var window = new SettingsWindow(store, "Default Name", new FakeDefaultApp(true, true));
+            File.SetUnixFileMode(_dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            try
+            {
+                window.HealdanBox.IsChecked = true;
+                return Task.FromResult(window.HealdanBox.IsChecked);
+            }
+            finally
+            {
+                File.SetUnixFileMode(_dir, mode);
+            }
+        });
+
+        Assert.True(shown);
+        Assert.False(store.HealdanEnabled);
+    }
 }

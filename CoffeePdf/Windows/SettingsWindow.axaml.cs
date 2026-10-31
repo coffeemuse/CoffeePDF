@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using CoffeePdf.Core.Settings;
@@ -6,10 +7,7 @@ using CoffeePdf.Platform;
 
 namespace CoffeePdf.Windows;
 
-/// <summary>
-/// Settings (spec §5): the Markup author, and the Default PDF app. Healdan support joins it in Phase 2, when it does
-/// something. Each change is kept at once.
-/// </summary>
+/// <summary>Settings (spec §5): the Markup author, Healdan support, and the Default PDF app. Each change is kept at once.</summary>
 public partial class SettingsWindow : Window
 {
     private readonly IDefaultPdfApp? _defaultApp;
@@ -40,6 +38,20 @@ public partial class SettingsWindow : Window
             {
                 // A full disk or a folder that can't be written: a convenience setting must never crash the app mid-keystroke.
                 // The typed text stays in the box, and the store keeps its last good value.
+            }
+        };
+        HealdanBox.IsChecked = store.HealdanEnabled;
+        HealdanBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != ToggleButton.IsCheckedProperty)
+                return;
+            try
+            {
+                store.HealdanEnabled = HealdanBox.IsChecked == true; // the windows follow through HealdanEnabledChanged
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // As for the author: the box shows what was chosen, and the store keeps its last good value.
             }
         };
         DefaultAppSection.IsVisible = defaultApp.IsSupported;

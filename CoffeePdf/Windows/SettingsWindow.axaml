@@ -9,6 +9,12 @@
       <TextBlock TextWrapping="Wrap" Opacity="0.7"
                  Text="The name written into each markup you add. Leave it empty to use your macOS full name." />
     </StackPanel>
+    <StackPanel Spacing="6">
+      <TextBlock Text="Healdan" FontWeight="SemiBold" />
+      <CheckBox x:Name="HealdanBox" Content="Use CoffeePDF with Healdan" />
+      <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                 Text="Opens and saves documents in Healdan through Healdan Helper. Turning it off takes effect for each Healdan document as its window closes." />
+    </StackPanel>
     <StackPanel x:Name="DefaultAppSection" Spacing="6">
       <TextBlock Text="Default PDF app" FontWeight="SemiBold" />
       <TextBlock x:Name="DefaultAppStatus" TextWrapping="Wrap" />
