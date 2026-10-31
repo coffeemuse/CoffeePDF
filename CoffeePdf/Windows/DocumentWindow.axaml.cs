@@ -51,12 +51,25 @@ public partial class DocumentWindow : Window
     private Task _letGo = Task.CompletedTask; // the copies a save moved the window off are being let go until this is done
     private bool _savingToHealdan;                // a save is being followed, and Healdan doesn't have it yet (spec §6.4)
     private CancellationTokenSource? _following;  // stops the save being followed
+    private const string SaveAsNewDocumentLabel = "Save as New Document…";
+    private bool _writtenForHealdan; // a copy was written for Healdan, which cleared IsDirty, but the window's file lacks the changes
+    private bool _moving;            // moving to the new copy Healdan filed: the window takes no input (spec §6.6 step 3)
+    private bool _closeWhenMoved;    // a close came during the move, and goes through once it's done
+    private TaskCompletionSource<bool>? _loadWaiter; // completed when the PdfViewer has loaded the file, or failed to
 
     public DocumentWindow()
     {
         InitializeComponent();
         ReportError = (heading, detail) => MessageDialog.ShowErrorAsync(this, heading, detail);
         AskToSave = () => MessageDialog.AskToSaveAsync(this, Path.GetFileName(_path) ?? "CoffeePDF");
+        PickSaveTarget = async name => (await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save As",
+            SuggestedFileName = name,
+            DefaultExtension = "pdf",
+            FileTypeChoices = [FilePickerFileTypes.Pdf],
+            ShowOverwritePrompt = true,
+        }))?.TryGetLocalPath();
         Viewer.AnnotationAdded += (_, e) => _markedPages.Add(e.Annotation.PageIndex);
         Viewer.UndoRedoStateChanged += (_, _) =>
         {
@@ -92,7 +105,9 @@ public partial class DocumentWindow : Window
         {
             _loaded = true;
             TakeLockIfEditable();
+            _loadWaiter?.TrySetResult(true);
         };
+        Viewer.LoadError += (_, _) => _loadWaiter?.TrySetResult(false);
         // The Helper-away bar goes once the Helper answers again (spec §6.9): it's asked each time the window comes forward.
         Activated += (_, _) =>
         {
@@ -145,7 +160,8 @@ public partial class DocumentWindow : Window
     internal bool HoldsCopy => _lockHeld || _document?.TellsHelper == true || !_letGo.IsCompleted;
 
     /// <summary>Whether the document has changes its file doesn't.</summary>
-    public bool HasUnsavedChanges => Viewer.HasDocument && (Viewer.IsDirty || _editedSinceSave || _saveFailed || _savesRunning > 0);
+    public bool HasUnsavedChanges =>
+        Viewer.HasDocument && (Viewer.IsDirty || _editedSinceSave || _saveFailed || _writtenForHealdan || _savesRunning > 0);
 
     /// <summary>Shows a save's failure, with a heading and the reason. The tests replace it.</summary>
     internal Func<string, string, Task> ReportError { get; set; }
@@ -155,6 +171,9 @@ public partial class DocumentWindow : Window
 
     /// <summary>Replaces the file with a save's bytes, on a pool thread. The tests replace it to hold a save mid-write.</summary>
     internal Action<string, byte[]> WriteFile { get; set; } = (target, pdf) => AtomicFile.Write(target, pdf);
+
+    /// <summary>The Mac's Save panel, given the name it starts with, answering the file picked or null. The tests replace it.</summary>
+    internal Func<string?, Task<string?>> PickSaveTarget { get; set; }
 
     /// <summary>The pause between questions while a save is followed. The tests replace it, so none waits for the real pauses.</summary>
     internal Func<TimeSpan, CancellationToken, Task> Pause { get; set; } = Task.Delay;
@@ -172,7 +191,7 @@ public partial class DocumentWindow : Window
     {
         _path = Path.GetFullPath(path);
         _markedPages.Clear();
-        _saved = _editedSinceSave = _saveFailed = false;
+        _saved = _editedSinceSave = _saveFailed = _writtenForHealdan = false;
         _typedPassword = null;
         _loads++;
         _loaded = false;
@@ -188,11 +207,13 @@ public partial class DocumentWindow : Window
 
     /// <summary>
     /// Writes the document to <paramref name="target"/> (spec §6.4), and the window then shows that file. The
-    /// author goes into the new markups, and the file is replaced whole. Returns whether it saved.
+    /// author goes into the new markups, and the file is replaced whole. Returns whether it saved. With
+    /// <paramref name="asCopy"/>, it writes a copy for Healdan to file instead (§6.6): the window stays on its own
+    /// file, whose changes stay unsaved.
     /// </summary>
-    internal async Task<bool> SaveToAsync(string target)
+    internal async Task<bool> SaveToAsync(string target, bool asCopy = false)
     {
-        if (!Viewer.HasDocument)
+        if (!Viewer.HasDocument || _moving)
             return false;
         // One window per document (spec §2.1): a window left on the same file would have its next save overwrite this one.
         var full = Path.GetFullPath(target);
@@ -219,12 +240,17 @@ public partial class DocumentWindow : Window
         await _oneSaveAtATime.WaitAsync();
         try
         {
+            // Whether the window's own file lacks changes, read before the snapshot clears IsDirty: a copy written for
+            // Healdan leaves them unsaved there.
+            var unsaved = Viewer.IsDirty || _editedSinceSave || _saveFailed || _writtenForHealdan;
             using var memory = new MemoryStream();
             await Viewer.SaveDocumentAsync(memory);
             // From the snapshot on, an undo is a change this save doesn't hold, so it's recorded even while the file is
             // still being written.
             _saved = true;
             _editedSinceSave = false;
+            if (asCopy)
+                _writtenForHealdan = unsaved;
             var pdf = memory.ToArray();
             previous = _path;
             int[] pages = [.. _markedPages];
@@ -232,15 +258,20 @@ public partial class DocumentWindow : Window
             var password = Viewer.Password ?? _typedPassword;
             var write = WriteFile;
             await Task.Run(() => write(target, MarkupAuthor.Stamp(pdf, previous, pages, author, password)));
-            _path = Path.GetFullPath(target);
-            _saveFailed = false;
-            if (_path != previous)
-                movedTo = _path;
+            if (!asCopy)
+            {
+                _path = Path.GetFullPath(target);
+                _saveFailed = false;
+                _writtenForHealdan = false;
+                if (_path != previous)
+                    movedTo = _path;
+            }
         }
         catch (Exception error) // whatever stopped it, the user is told, and the changes stay unsaved
         {
             failure = error;
-            _saveFailed = true;
+            if (!asCopy)
+                _saveFailed = true; // a copy for Healdan that fails leaves the window as it was
         }
         finally
         {
@@ -265,12 +296,14 @@ public partial class DocumentWindow : Window
                     // raised, so a menu that couldn't be refreshed now is not worth reporting as a failed save.
                 }
             }
-            AfterSave(previous);
+            if (!asCopy)
+                AfterSave(previous);
             return true;
         }
         try
         {
-            await ReportError($"“{Path.GetFileName(target)}” couldn’t be saved.", failure.Message);
+            await ReportError(asCopy ? $"“{Path.GetFileName(_path)}” couldn’t be written for Healdan." : $"“{Path.GetFileName(target)}” couldn’t be saved.",
+                failure.Message);
         }
         catch (Exception)
         {
@@ -280,20 +313,150 @@ public partial class DocumentWindow : Window
         return false;
     }
 
-    /// <summary>Save As (⇧⌘S): writes the document to a file the user picks, and the window moves to it.</summary>
-    public async Task<bool> SaveAsAsync()
+    /// <summary>Save As (⇧⌘S): the Mac's Save panel. Task 13 sends it to the Helper first.</summary>
+    public Task<bool> SaveAsAsync() => SaveAsWithPanelAsync();
+
+    /// <summary>The Mac's own Save panel: writes the document to the file picked, and the window moves to it.</summary>
+    internal async Task<bool> SaveAsWithPanelAsync() =>
+        Viewer.HasDocument && await PickSaveTarget(Path.GetFileName(_path)) is { } target && await SaveToAsync(target);
+
+    /// <summary>
+    /// Save to Healdan for a local PDF, and Save as New Document for a copy (spec §6.6): the Helper's Save window, then
+    /// the PDF with its markups written to the answer's temporary file, filed, and the window moved to the new copy.
+    /// The Helper's way back shows the Mac's Save panel, as does a Helper that doesn't answer; an error is shown first.
+    /// Returns whether the document was saved.
+    /// </summary>
+    internal async Task<bool> SaveNewAsync()
     {
-        if (!Viewer.HasDocument)
+        if (!Viewer.HasDocument || _document is not { } document || _moving)
             return false;
-        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        var original = document.TellsHelper ? _path : null;
+        SaveNewAnswer answer;
+        try
         {
-            Title = "Save As",
-            SuggestedFileName = Path.GetFileName(_path),
-            DefaultExtension = "pdf",
-            FileTypeChoices = [FilePickerFileTypes.Pdf],
-            ShowOverwritePrompt = true,
-        });
-        return file?.TryGetLocalPath() is { } target && await SaveToAsync(target);
+            answer = await Healdan.Channel.SaveNewAsync(document.NameForHealdan, original);
+        }
+        catch (HelperUnreachableException)
+        {
+            OnHelperAway();
+            return await SaveAsWithPanelAsync();
+        }
+        catch (HelperErrorException e)
+        {
+            await TellAsync("Healdan Helper couldn’t show its Save window.", e.Message);
+            return await SaveAsWithPanelAsync();
+        }
+        if (_closed)
+            return false; // the window closed while the Helper's was open
+        if (answer.Action == SaveNewAction.Local)
+            return await SaveAsWithPanelAsync();
+        if (answer.Action != SaveNewAction.Save)
+            return false;
+        if (answer.Format != "pdf" || answer.TempPath is not { Length: > 0 } temp)
+        {
+            await TellAsync("Healdan Helper asked for a file CoffeePDF can’t write.", "CoffeePDF writes PDFs only, so the Mac’s Save panel is shown instead.");
+            return await SaveAsWithPanelAsync();
+        }
+        if (!await SaveToAsync(temp, asCopy: true))
+        {
+            TryDeleteTemporary(temp); // the Helper deletes it only after /v1/file
+            return false;
+        }
+        if (await FileAndMoveAsync(answer, original, temp))
+            return true;
+        return await SaveAsWithPanelAsync();
+    }
+
+    /// <summary>
+    /// Files the PDF written to <paramref name="temp"/>, and moves the window to the new copy (spec §6.6 steps 2 and
+    /// 3), taking no input meanwhile. Returns whether it was filed. When it wasn't, the window is as it was, with its
+    /// changes unsaved.
+    /// </summary>
+    private async Task<bool> FileAndMoveAsync(SaveNewAnswer answer, string? original, string temp)
+    {
+        _moving = true;
+        DocumentPanel.IsEnabled = false;
+        try
+        {
+            CopyState filed;
+            try
+            {
+                filed = await Healdan.Channel.FileAsync(answer, original);
+            }
+            catch (HelperUnreachableException)
+            {
+                TryDeleteTemporary(temp);
+                OnHelperAway();
+                return false;
+            }
+            catch (HelperErrorException e)
+            {
+                // The Helper has told the user why, in a notification, and deleted the file (the Desktop Clients page).
+                Healdan.Log.Warn($"Filing: {e.Message}");
+                return false;
+            }
+            if (!filed.Known || filed.Path.Length == 0)
+            {
+                await TellAsync("The document is filed in Healdan, but Healdan Helper gave no copy to open.",
+                    "Close this window without saving, and open the document from Healdan.");
+                return true;
+            }
+            await MoveToCopyAsync(filed);
+            return true;
+        }
+        finally
+        {
+            _moving = false;
+            DocumentPanel.IsEnabled = true;
+            if (_closeWhenMoved)
+                Close();
+        }
+    }
+
+    /// <summary>
+    /// Moves the window to the copy Healdan filed (spec §6.6 step 3), in its order: reopens the file there, writes its
+    /// lock file (as the PdfViewer loads it), lets the old copy go, if there was one, and tells the Helper the window
+    /// has adopted the new copy, whose file as it is now is the starting point.
+    /// </summary>
+    private async Task MoveToCopyAsync(CopyState filed)
+    {
+        StopFollowing();
+        var (oldPath, oldDocument, oldLock) = (_path, _document, _lockHeld);
+        _lockHeld = false;
+        var loaded = _loadWaiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Show(filed.Path, WindowDocument.Opened(filed.Path, healdan: true, inCopies: true).Answered(filed));
+        var shown = await loaded.Task;
+        _loadWaiter = null;
+        await LetGoAsync(oldPath, oldDocument, oldLock);
+        if (!shown)
+            return; // the PdfViewer couldn't open the new copy, and says so in the window
+        try
+        {
+            var adopted = await Healdan.Channel.AdoptedAsync(filed.Path);
+            if (adopted.Known && _document is not null && _path == Path.GetFullPath(filed.Path))
+            {
+                _document = _document.Answered(adopted);
+                ApplyMode();
+            }
+        }
+        catch (Exception e) when (e is HelperUnreachableException or HelperErrorException)
+        {
+            // An older Helper, or one that's gone: it takes the first write that settles as the starting point instead.
+            Healdan.Log.Warn($"/v1/adopted: {e.GetType().Name}");
+        }
+    }
+
+    /// <summary>Deletes the file written for Healdan when the Helper won't, as it deletes one only after <c>/v1/file</c>.</summary>
+    private void TryDeleteTemporary(string temp)
+    {
+        try
+        {
+            File.Delete(temp);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Healdan.Log.Warn($"The file written for Healdan couldn’t be deleted ({e.GetType().Name})");
+        }
     }
 
     /// <summary>Print… (⌘P): the system print dialog, with the unsaved markups, under the file's name.</summary>
@@ -331,7 +494,7 @@ public partial class DocumentWindow : Window
     {
         // Held through the save the prompt asked for, which counts as unsaved changes: a second ⌘W meanwhile would
         // otherwise ask the same question again over the save.
-        if (_asking)
+        if (_asking || _moving)
             return false;
         _asking = true;
         try
@@ -355,6 +518,13 @@ public partial class DocumentWindow : Window
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
+        if (_moving)
+        {
+            // The window takes no input until it's the new copy's (spec §6.6 step 3); the close follows then.
+            e.Cancel = true;
+            _closeWhenMoved = true;
+            return;
+        }
         if (_closeConfirmed || !HasUnsavedChanges)
             return;
         // The red button, ⌘W, or the app quitting: ask first, then close for real.
@@ -513,7 +683,7 @@ public partial class DocumentWindow : Window
     /// </summary>
     internal async Task<bool> SaveAsNewVersionAsync()
     {
-        if (_document is not { Mode: DocumentMode.Editable } document || _path is not { } path)
+        if (_moving || _document is not { Mode: DocumentMode.Editable } document || _path is not { } path)
             return false;
         try
         {
@@ -578,15 +748,26 @@ public partial class DocumentWindow : Window
     {
         Bar.IsVisible = bar is not null;
         BarText.Text = bar?.Text;
-        // Only Turn On Healdan Support has its button so far; Save as New Document's comes with its flow (Task 12).
-        BarButton.IsVisible = bar?.Action == BarAction.TurnOnHealdan;
-        BarButton.Content = bar?.Action == BarAction.TurnOnHealdan ? TurnOnHealdanLabel : null;
+        BarButton.IsVisible = bar is { Action: not BarAction.None };
+        BarButton.Content = bar?.Action switch
+        {
+            BarAction.SaveAsNewDocument => SaveAsNewDocumentLabel,
+            BarAction.TurnOnHealdan => TurnOnHealdanLabel,
+            _ => null,
+        };
     }
 
-    private void OnBarButton(object? sender, RoutedEventArgs e)
+    private async void OnBarButton(object? sender, RoutedEventArgs e)
     {
-        if (_document?.Bar?.Action == BarAction.TurnOnHealdan)
-            TurnOnHealdan();
+        switch (_document?.Bar?.Action)
+        {
+            case BarAction.SaveAsNewDocument:
+                await SaveNewAsync();
+                break;
+            case BarAction.TurnOnHealdan:
+                TurnOnHealdan();
+                break;
+        }
     }
 
     /// <summary>The bar's Turn On Healdan Support: every window follows, through HealdanEnabledChanged.</summary>
