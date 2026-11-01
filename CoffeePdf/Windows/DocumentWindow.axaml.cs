@@ -846,9 +846,9 @@ public partial class DocumentWindow : Window
 
     /// <summary>
     /// Save as New Version (spec §6.5): the Helper sends the copy's next save as a version, and the changes are saved.
-    /// With nothing to save, nothing is saved or followed, since the Helper would say a save is pending until the next
-    /// one comes: the user is told that save goes as the version. With the Helper away, the version can't be asked
-    /// for, so nothing is saved, and the user is told (Phase 2's plan, question 9).
+    /// With nothing to save, the Helper sends the file as it is as the version, so nothing is saved and that is
+    /// followed, as a save is (§16, Phase 3). With the Helper away, the version can't be asked for, so nothing is saved,
+    /// and the user is told (Phase 2's plan, question 9).
     /// </summary>
     internal async Task<bool> SaveAsNewVersionAsync()
     {
@@ -873,7 +873,7 @@ public partial class DocumentWindow : Window
             return false; // the window closed, or moved to another file, while the Helper was answering
         if (HasUnsavedChanges)
             return await SaveAsync();
-        await TellAsync("The next save goes to Healdan as a new version.", "There are no changes to save yet.");
+        Follow();
         return true;
     }
 

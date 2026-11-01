@@ -153,24 +153,26 @@ public sealed class HealdanSaveTests : IDisposable
     }
 
     [PdfViewerFact]
-    public async Task Save_as_New_Version_with_nothing_to_save_says_the_next_save_goes_as_the_version()
+    public async Task Save_as_New_Version_with_nothing_to_save_follows_the_file_as_it_is_to_Healdan()
     {
         var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        // The Helper sends the file as it is as the version, and /v1/saved answers once Healdan has it.
+        _helper.Answer(ChannelRoutes.Saved, FakeHelper.Json(Version(copy, "3.0")));
 
-        var (asked, errors, title) = await Headless.RunAsync(async () =>
+        var (asked, errors) = await Headless.RunAsync(async () =>
         {
             var (window, errorList) = await TestWindows.OpenAsync(copy, _helper.Link());
             var result = await window.SaveAsNewVersionAsync();
-            var state = (result, errorList.ToList(), window.Title);
+            await TestWindows.WaitForAsync(() => window.Title == "Settlement Agreement #1234 v3.0");
+            var state = (result, errorList.ToList());
             await CloseAsync(window);
             return state;
         });
 
         Assert.True(asked);
-        Assert.Equal("The next save goes to Healdan as a new version. There are no changes to save yet.", Assert.Single(errors));
-        Assert.Equal("Settlement Agreement #1234 v2.1", title); // no save is on its way
-        Assert.Equal(new[] { "state", "new-version", "closed" }, _helper.Routes);
-        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
+        Assert.Empty(errors);
+        Assert.Equal(new[] { "state", "new-version", "saved", "closed" }, _helper.Routes);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy)); // nothing was saved: the file goes up as it is
     }
 
     [PdfViewerFact]

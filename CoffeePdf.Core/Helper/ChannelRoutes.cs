@@ -34,7 +34,11 @@ public static class ChannelRoutes
     /// <summary>The header every route's request carries the secret in.</summary>
     public const string SecretHeader = "X-Healdan-Secret";
 
-    /// <summary>A copy's state, as the routes that answer one give it.</summary>
+    /// <summary>
+    /// A copy's state, as the routes that answer one give it. From Healdan Helper 0.5.0, <c>readOnly</c> is also true
+    /// once a copy's saves have stopped going up, such as after a refused save, with its <c>title</c> unchanged and
+    /// <c>holdBy</c> null (spec §4.4 item 10).
+    /// </summary>
     public const string StateShape = """{"known": true, "docNumber", "title", "docRef", "readOnly", "path", "holdBy", "pending"}, or {"known": false}""";
 
     public static readonly ChannelRoute OpenDialog = new("open-dialog", ChannelWait.Window,
@@ -45,7 +49,8 @@ public static class ChannelRoutes
         """{"action": "save" | "local" | "cancel", "folderId", "name", "format", "properties", "tempPath"}""");
 
     public static readonly ChannelRoute File = new("file", ChannelWait.Filing,
-        """{"tempPath", "folderId", "name", "format", "properties", "app", "replaces"}""", "the new copy's state");
+        """{"tempPath", "folderId", "name", "format", "properties", "app", "replaces"}""",
+        "the new copy's state, filed with the app named, from Healdan Helper 0.5.0 (spec §4.4 item 4)");
 
     public static readonly ChannelRoute Adopted = new("adopted", ChannelWait.Quick,
         """{"path"}""", "the copy's state; the file as it is now is the new copy's starting point");
