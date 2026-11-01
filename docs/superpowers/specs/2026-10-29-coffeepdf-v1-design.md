@@ -714,6 +714,35 @@ what was planned. This is what the build showed, and what it changed. No owner's
   the README's checks looked good, and the menu bar showed in full, consistently, after window switches. The build
   asked again for access to the documents' folder, as a build with another signature does; that isn't the patch's.
 
+### The menu bar with no window (2026-11-01)
+
+- **What was wrong.** With no document open, the menu bar had only the CoffeePDF menu, so opening a document needed an
+  empty window first, from the Dock icon. (owner, 2026-11-01)
+- **Built.** While no document window is in front, with none open or with Settings in front, the bar is the CoffeePDF
+  menu, File, and Healdan while Healdan support is on (`Platform/AppMenuBar.cs`).
+  - File has a window's items: Open… and Open Recent work, and the rest are greyed out. Healdan's items are greyed
+    out, as in an empty window.
+  - Open… goes to the Helper's Open window first, as a window's does (§6.3). Otherwise it shows the Mac's Open panel
+    on its own (`Platform/OpenPanel.cs`), since Avalonia shows its panel only on a window. An error from the Helper
+    shows in a message window of its own.
+  - Avalonia.Native builds the bar it shows without a window's menu from the menu that holds the app's, so the app's
+    menu now has one.
+- **It relies on issue #9's patch.** Avalonia 12.1.4's own `showAppMenuOnly` puts the CoffeePDF menu back last in that
+  bar, which would show File's menu under CoffeePDF's name; the patch puts it back first. The patch's README checks
+  this before the patch goes.
+- **Checked in the running app (2026-11-01),** by reading `NSApp`'s menu from a throwaway build, with settings, Helper
+  and log folders of its own. With the window closed, the bar was CoffeePDF, File and Healdan (hidden with support
+  off), with the items on and off as above. Turning support on showed Healdan. The Open panel showed on its own, and
+  Cancel answered no files.
+  - If CoffeePDF starts in the background and its window never comes forward, the bar stays the CoffeePDF menu alone
+    until a window does, as before. Avalonia sets the bar only when a window comes forward or the last one closes.
+- **The owner's check on the Mac passed (2026-11-01),** on an ad-hoc signed build, `0.2.2-nowindow.1`, with the
+  installed CoffeePDF quit: the bar with every document closed, Open Recent, ⌘O with Healdan support on (Cancel, a
+  Healdan document, and the way back to the Mac's panel) and off, Settings in front with the Healdan box ticked and
+  unticked, and issue #9's window switches.
+  - The Healdan menu stays greyed out with no document: opening from Healdan is File › Open…, which goes to the
+    Helper's Open window. No Open item is wanted in the Healdan menu. (owner, 2026-11-01)
+
 ### The owner's to-do list, to fill the pending rows
 
 1. **Done (2026-10-29).** `AVALONIA_LICENSE_KEY` is in the shell profile. Claude then ran the PdfViewer's tests and probes, wrote the signed files for the signature check (`COFFEEPDF_PROBE_OUT="$PWD/probe-out"`, in `probe-out/` in the worktree, which git ignores) and built a keyed package (`packaging/mac/out/CoffeePDF-0.0.1-spike2.dmg`). Rows 1 to 4 and 7 no longer wait on the key.
