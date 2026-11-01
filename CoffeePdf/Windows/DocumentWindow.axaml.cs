@@ -575,23 +575,8 @@ public partial class DocumentWindow : Window
     {
         if (_moving)
             return; // the window takes no input until it's the new copy's (spec §6.6 step 3)
-        if (Allowed.HelperBoxes)
-        {
-            try
-            {
-                // Opened: the Helper opens what was chosen in the app for its kind, so a PDF comes back to CoffeePDF.
-                if (await Healdan.Channel.OpenDialogAsync() is OpenDialogAction.Opened or OpenDialogAction.Cancel)
-                    return;
-            }
-            catch (HelperUnreachableException)
-            {
-                OnHelperAway();
-            }
-            catch (HelperErrorException e)
-            {
-                await TellAsync("Healdan Helper couldn’t show its Open window.", e.Message);
-            }
-        }
+        if (Allowed.HelperBoxes && !await SharedMenu.OpenThroughHelperAsync(Healdan.Channel, OnHelperAway, TellAsync))
+            return;
         if (_closed)
             return; // the window closed while the Helper's Open window was up: there's nothing to show the Mac's panel over
         foreach (var path in await PickFilesToOpen())
@@ -702,16 +687,8 @@ public partial class DocumentWindow : Window
     }
 
     /// <summary>Fills File › Open Recent with <paramref name="paths"/>, newest first, and Clear Menu.</summary>
-    internal void ShowRecent(IReadOnlyList<string> paths)
-    {
-        var menu = MenuItem("Open Recent").Menu!;
-        menu.Items.Clear();
-        foreach (var path in paths)
-            menu.Items.Add(new NativeMenuItem { Header = Path.GetFileName(path), Command = new ActionCommand(() => App.Current.OpenFile(path)) });
-        if (paths.Count > 0)
-            menu.Items.Add(new NativeMenuItemSeparator());
-        menu.Items.Add(new NativeMenuItem { Header = "Clear Menu", Command = new ActionCommand(App.Current.Recent.Clear, () => paths.Count > 0) });
-    }
+    internal void ShowRecent(IReadOnlyList<string> paths) =>
+        SharedMenu.FillOpenRecent(MenuItem("Open Recent").Menu!, paths, App.Current.OpenFile, App.Current.Recent.Clear);
 
     /// <summary>
     /// Asks the Helper what the window's file is (<c>/v1/state</c>, spec §6.2), and takes the mode its answer gives. A
@@ -1001,19 +978,7 @@ public partial class DocumentWindow : Window
 
     /// <summary>The menu bar's item with <paramref name="header"/>, at any depth.</summary>
     internal NativeMenuItem MenuItem(string header) =>
-        Find(NativeMenu.GetMenu(this)!, header) ?? throw new InvalidOperationException($"No menu item {header}");
-
-    private static NativeMenuItem? Find(NativeMenu menu, string header)
-    {
-        foreach (var item in menu.Items.OfType<NativeMenuItem>())
-        {
-            if (item.Header == header)
-                return item;
-            if (item.Menu is { } submenu && Find(submenu, header) is { } found)
-                return found;
-        }
-        return null;
-    }
+        SharedMenu.Find(NativeMenu.GetMenu(this)!, header) ?? throw new InvalidOperationException($"No menu item {header}");
 
     private void OnRecentChanged(object? sender, EventArgs e) => ShowRecent(App.Current.Recent.Paths);
 
