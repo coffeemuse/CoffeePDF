@@ -28,6 +28,23 @@ public sealed class MessageDialogTests
     }
 
     [Fact]
+    public async Task With_no_window_to_show_it_over_it_shows_on_its_own_and_answers()
+    {
+        var (shown, owner, answer) = await Headless.RunAsync(async () =>
+        {
+            var dialog = MessageDialog.Build("Heading", "Detail", ["OK"]);
+            var answering = dialog.ShowOverAsync(null);
+            var state = (dialog.IsVisible, dialog.Owner);
+            ((Button)dialog.RightButtons.Children[^1]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            return (state.IsVisible, state.Owner, await answering);
+        });
+
+        Assert.True(shown);
+        Assert.Null(owner);
+        Assert.Equal("OK", answer);
+    }
+
+    [Fact]
     public async Task Save_changes_offers_Dont_Save_on_the_left_and_Save_as_the_default()
     {
         var (left, right, answer) = await Headless.RunAsync(async () =>

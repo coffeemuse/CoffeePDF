@@ -51,6 +51,9 @@ public partial class App : Application
     /// <summary>Healdan support, the Helper's folders and its channel (spec §5, §9). A test's window gets a fake Helper's instead.</summary>
     public HealdanLink Healdan { get; private set; } = null!;
 
+    /// <summary>The menu bar while no document window is in front: the CoffeePDF menu, File and Healdan.</summary>
+    internal AppMenuBar MenuBar { get; private set; } = null!;
+
     /// <summary>The document windows open.</summary>
     internal IReadOnlyList<DocumentWindow> Windows => _windows;
 
@@ -103,6 +106,9 @@ public partial class App : Application
         var settings = new NativeMenuItem { Header = "Settings…", Gesture = new KeyGesture(Key.OemComma, KeyModifiers.Meta) };
         settings.Click += (_, _) => ShowSettings();
         appMenu.Items.Add(settings);
+        // Before the app menu is set, which Avalonia exports after Initialize: the bar holding it is what macOS shows
+        // while no document window is in front.
+        MenuBar = new AppMenuBar(appMenu, Healdan, Recent, OpenFile);
         NativeMenu.SetMenu(this, appMenu);
     }
 

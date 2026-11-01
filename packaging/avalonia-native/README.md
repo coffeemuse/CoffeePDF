@@ -110,3 +110,6 @@ Remove it once an Avalonia release fixes Avalonia#22285. Watch the issue and Ava
    - With two documents open, click from one to the other: the whole bar shows straight away.
    - After ⌘, the CoffeePDF menu still drops down. After ⌘O (then Cancel), or ⌘W closing one of two documents, the
      File menu still does.
+   - Close every document: the bar shows CoffeePDF, then File, then Healdan if Healdan support is on
+     (`CoffeePdf/Platform/AppMenuBar.cs`). Avalonia 12.1.4's own `showAppMenuOnly` puts the CoffeePDF menu back last
+     in that bar, so File's menu would show under CoffeePDF's name. The patch puts it back first.
