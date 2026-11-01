@@ -34,7 +34,11 @@ public static class ChannelRoutes
     /// <summary>The header every route's request carries the secret in.</summary>
     public const string SecretHeader = "X-Healdan-Secret";
 
-    /// <summary>A copy's state, as the routes that answer one give it.</summary>
+    /// <summary>
+    /// A copy's state, as the routes that answer one give it. From Healdan Helper 0.5.0, <c>readOnly</c> is also true
+    /// once a copy's saves have stopped going up, such as after a refused save, with its <c>title</c> unchanged and
+    /// <c>holdBy</c> null (spec §4.4 item 10).
+    /// </summary>
     public const string StateShape = """{"known": true, "docNumber", "title", "docRef", "readOnly", "path", "holdBy", "pending"}, or {"known": false}""";
 
     public static readonly ChannelRoute OpenDialog = new("open-dialog", ChannelWait.Window,
@@ -45,7 +49,8 @@ public static class ChannelRoutes
         """{"action": "save" | "local" | "cancel", "folderId", "name", "format", "properties", "tempPath"}""");
 
     public static readonly ChannelRoute File = new("file", ChannelWait.Filing,
-        """{"tempPath", "folderId", "name", "format", "properties", "app", "replaces"}""", "the new copy's state");
+        """{"tempPath", "folderId", "name", "format", "properties", "app", "replaces"}""",
+        "the new copy's state, filed with the app named, from Healdan Helper 0.5.0 (spec §4.4 item 4)");
 
     public static readonly ChannelRoute Adopted = new("adopted", ChannelWait.Quick,
         """{"path"}""", "the copy's state; the file as it is now is the new copy's starting point");
@@ -54,7 +59,7 @@ public static class ChannelRoutes
         """{"path"}""", "the copy's state once Healdan has every save written so far, at once when nothing is on its way, else after 120 s as it is");
 
     public static readonly ChannelRoute NewVersion = new("new-version", ChannelWait.Quick,
-        """{"path"}""", "{}; the copy's next save goes up as a version");
+        """{"path"}""", "{}; the copy's file goes up as a version once it has settled, 1.2 s on: a save written by then, else the file as it is (spec §6.5)");
 
     public static readonly ChannelRoute Properties = new("properties", ChannelWait.Window,
         """{"path"}""", """{"action": "saved" | "cancel" | "file"}; file means it isn't in Healdan, so the caller runs Save to Healdan""");

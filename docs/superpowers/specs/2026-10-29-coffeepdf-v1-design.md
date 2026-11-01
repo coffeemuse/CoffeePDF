@@ -109,7 +109,7 @@ CoffeePDF saves over Copies/<name> #1234 v2.pdf ──Helper watches folder─�
 | CoffeePDF's saves | The Helper | A temporary file renamed over the copy, which the Helper's folder watch picks up |
 | The Helper | Healdan | `/api/v1` with the device token, as today |
 
-Phase 0 found that the PdfViewer's save replaces the file through a temporary file and a rename (§16 row 2). The Helper's watch learns that pattern (owner, 2026-10-30; §4.4 item 8).
+Phase 0 found that the PdfViewer's save replaces the file through a temporary file and a rename (§16 row 2). The owner chose to have the Helper's watch handle that pattern (owner, 2026-10-30), and it already did (§4.4 item 8).
 
 The server's API needs no change: a check-out's `app` is any string of up to 100 characters. Every channel route CoffeePDF needs already exists.
 
@@ -145,29 +145,32 @@ The bundle id is `com.healdan.coffeepdf` (call). macOS keeps one instance of an 
 
 ### 4.4 Healdan's changes
 
-Healdan's process gives every milestone a design spec in its own repository, so these changes get one there, referring to this spec (call). None of them changes anything until CoffeePDF is installed with Healdan support on.
+Healdan's process gives every milestone a design spec in its own repository, so these changes got one there, referring to this spec (call): Healdan's **M3.6, "PDFs in CoffeePDF"** ([spec](https://github.com/Healdan-Project/healdan/blob/master/docs/superpowers/specs/2026-11-01-m3-6-pdfs-in-coffeepdf-design.md)), built on 2026-11-01 for Healdan Helper 0.5.0 (§16, Phase 3). Its design checked this list against Healdan Helper 0.4.0 and corrected it, and the items below say what M3.6 settled. What depends on CoffeePDF changes nothing until CoffeePDF is installed with Healdan support on. Four changes reach every Helper user, with or without CoffeePDF (M3.6 §2.3): items 3, 4, 10 and 11.
 
 1. **`CoffeePdfApp : IOfficeApp`** in `Healdan.Helper.Core/Cycle/`:
    - `Name` is `CoffeePDF`;
    - `Open` launches it by bundle id;
    - `IsRunning` checks for its process;
    - `LockExists` checks for its lock file (§6.8);
-   - `CopyNames.IsAppFile` recognises that lock file's name, `.~coffeepdf.<copy file name>#`, as an app's file beside LibreOffice's `.~lock.<name>#` and `~$`, which is all it knows today (observed, Phase 2).
-2. **An app per kind.** Today `CopyCycle` and `HelperSession` take one `IOfficeApp` (LibreOffice), plus the default app for other files. They choose by kind instead:
+   - `CopyNames.IsAppFile` recognises that lock file's name, `.~coffeepdf.<copy file name>#`, as an app's file beside LibreOffice's `.~lock.<name>#` and Microsoft Office's `~$` (M3.6 §4.5).
+2. **An app per kind.** M3.5 built it: `OfficeApps` and its `AppChooser` choose the app for a new copy by its kind. PDFs join them:
    - PDFs go to CoffeePDF when it's available (item 5);
-   - otherwise PDFs go to the default app, read-only, as today.
+   - otherwise PDFs go to the default app, read-only, as before.
 
-   M3's spec §5.11 already foresees choosing an app per kind, for M3.5.
-3. **Links and the Open window take `.pdf`** when CoffeePDF is available.
-4. **`/v1/save-new` and `/v1/file` take `app: "CoffeePDF"`** with `formats: ["pdf"]`.
+   The Helper has no PDF chooser of its own: CoffeePDF's Healdan support preference (§5) is the switch (owner, M3.6 §2.2).
+3. **Links and the Open window take `.pdf`.** With CoffeePDF available, a PDF opens in it checked out. Without it, a link opens a PDF read-only in the default app, where earlier Helpers refused it, and the Open window forces read-only (owner, M3.6 §5.1, §5.2).
+4. **`/v1/save-new` and `/v1/file` take `app: "CoffeePDF"`** with `formats: ["pdf"]`. `/v1/save-new` needed no change. `/v1/file` ignored `app` and filed every copy with LibreOffice until M3.6 fixed it (M3.6 §6.2).
 5. **What "available" means:** CoffeePDF is installed (found by its bundle id), and its `settings.json` has Healdan support on (§5).
-   - The Helper reads that file the way it reads LibreOffice's registry for the extension: at start, and as the menu opens.
-   - The Helper's Settings and menu show CoffeePDF's state.
-6. **The web page's Open in App lists `pdf`** (`HealdanOpenInApp`), once a Helper that takes PDFs is released, as `.odg` did.
-7. **Docs:** the Developer Guide's Desktop Clients page and the user manual describe CoffeePDF.
-8. **A check for that spec:** how the Helper's close watch treats a copy whose lock file hasn't appeared yet. CoffeePDF writes its lock once the window has the PDF loaded (§6.8), which may take longer than LibreOffice's. A change for that spec: the Helper's folder watch counts a temporary file renamed over a copy as a save of that copy, and ignores the temporary file (§16 row 2; owner, 2026-10-30, §16 Decision 3). CoffeePDF names that file `.coffeepdf-` followed by 32 hex digits and `.tmp`, in the copy's folder, whatever the copy's name, so the longest names still fit (Phase 1's plan, `AtomicFile`).
-9. **The holder's computer in a copy's state.** `holdBy` names the person only (`hold.by.name`). Once the state names the computer too, CoffeePDF's read-only bar shows it (§6.1; owner, 2026-10-30).
-10. **A refused save's state.** After a refusal (`held-elsewhere`, `not-held`, `checked-out` or `locked`), today's Helper ends the check-out but leaves the state's `readOnly` false. It should answer `readOnly: true`, as §6.9 expects, and so should a copy whose check-out has ended some other way (owner, 2026-10-30). Phase 2 tests against a fake Helper that does.
+   - The Helper reads that file at each choice of app.
+   - The Helper's Settings show CoffeePDF's state, in a PDFs row. Its menu doesn't (owner, M3.6 §4.2, §4.4).
+6. **The web page's Open in App lists `pdf`** (`HealdanOpenInApp`; Healdan-Project/healdan#151).
+7. **Docs:** the Developer Guide's Desktop Clients page and the user manual describe CoffeePDF, and link to this repository.
+8. **A save by rename, and a lock that comes late.** The Helper's save watch has counted a temporary file renamed over a copy as a save of that copy since M3, and never looks at the temporary file (§16 row 2; owner, 2026-10-30, §16 Decision 3). CoffeePDF writes its lock once the window has the PDF loaded (§6.8), which may take longer than LibreOffice's, and the close watch already waits for it. M3.6 added tests of both and changed neither (M3.6 §6.1, §11.1).
+   - CoffeePDF names that file `.coffeepdf-` followed by 32 hex digits and `.tmp`, in the copy's folder, whatever the copy's name, so the longest names still fit (Phase 1's plan, `AtomicFile`).
+   - The Helper leaves those files alone, and at its start deletes any left in `Copies` while CoffeePDF isn't running (M3.6 §6.4).
+9. **The holder's computer in a copy's state: dropped** (owner, M3.6 §2.2). The API shows `hold.device` only to the user who holds the check-out, so a read-only copy's state can never name another user's computer. `holdBy` names the person (`hold.by.name`), and CoffeePDF's read-only bar shows that (§6.1).
+10. **A copy whose saves have stopped answers `readOnly: true`** on the channel: after a refused save (`held-elsewhere`, `not-held`, `checked-out` or `locked`), a check-out ended some other way, or newer content stored. Its `title` doesn't change, since it's the copy's file name, and `holdBy` is null. The Helper's own windows read `ReadOnly` as before (owner, M3.6 §6.3). Phase 2's fake Helper already answered so.
+11. **Healdan-Project/healdan#134 is fixed.** The Helper tracks each copy it opens in CoffeePDF, read-only ones too, and `/v1/closed` deletes a read-only copy at once. It does the same for a copy opened in the default app (owner, M3.6 §5.4, §5.5).
 
 ## 5. Preferences
 
@@ -189,11 +192,11 @@ Everything in this section applies with Healdan support on, except where it says
 |---|---|---|---|---|
 | Local | Any file outside the Helper's `Copies/` folder, or one in it that the Helper doesn't know | The file's name | On | Save to Healdan; Properties (which runs Save to Healdan) |
 | Healdan, editable | A copy checked out to this computer | The Helper's `title`, as it is: `Settlement Agreement #1234 v2.1` | On | Everything |
-| Healdan, read-only | A read-only open, or a document held elsewhere | The Helper's `title`, `Settlement Agreement #1234 v2.1 (read-only)`, plus a bar: *Read-only — checked out by Jane* | Off | Save as New Document |
+| Healdan, read-only | A read-only open, a document held elsewhere, or a copy whose saves have stopped (§6.9) | The Helper's `title`, as it is: `Settlement Agreement #1234 v2.1 (read-only)` for a read-only copy, and unchanged for one whose saves have stopped. Plus a bar: *Read-only — checked out by Jane* | Off | Save as New Document |
 | Healdan, Helper away | A copy in `Copies/` while the channel doesn't answer | The Helper's last `title` for this window, if it had an answer; otherwise the copy's file name without `.pdf`, which is what the Helper's `title` would be | On, except for a read-only copy | Off, with a bar (§6.9) |
 
 - **The title** is the Helper's, as the LibreOffice extension shows it, with CoffeePDF's *Edited* and *Saving to Healdan…* after it. (owner, 2026-10-30)
-- **The read-only bar** names the holder. The Helper's state names only the person, so the computer waits for §4.4 item 9. (owner, 2026-10-30)
+- **The read-only bar** names the holder: the person only, since the API never names another user's computer (§4.4 item 9). (owner, 2026-10-30 and 2026-11-01)
 - **A read-only copy with the Helper away** (`… (read-only).pdf`) stays read-only and gets no lock file. Only an editable copy gets markup, a lock file, and its saves followed. (owner, 2026-10-30)
 
 With Healdan support off, a file in the Helper's `Copies/` folder opens read-only, with a bar offering to turn Healdan support on. (owner's edge case, call)
@@ -227,11 +230,11 @@ Phase 0 found the temporary file and the rename (§16 row 2). The owner chose to
 
 ### 6.5 Save as New Version
 
-The Healdan menu's Save as New Version calls `/v1/new-version {path}`, then saves. The Helper sends that save as a version, giving `#1234 v3`.
+The Healdan menu's Save as New Version, with unsaved changes, calls `/v1/state {path}`, saves, then calls `/v1/new-version {path}`. The Helper sends the copy's file as a version once it has settled, 1.2 seconds after `/v1/new-version`, so the save is written first: one written after, and slower than that, would miss the version. The save goes as the version, giving `#1234 v3.0`. A save that fails asks for no version, since the file as it is would go instead (§16, Phase 3).
 
-With no unsaved changes it saves nothing and follows nothing: it says *The next save goes to Healdan as a new version.*, since the Helper has nothing new to send until a save comes (§16, Phase 2).
+With no unsaved changes it saves nothing: the Helper sends the file as it is as the version, and CoffeePDF follows it with `/v1/saved` as it follows a save (§6.4), so the title moves on to `#1234 v3.0`. Phase 2 had it say *The next save goes to Healdan as a new version.* and follow nothing, on a wrong reading of the Helper (§16, Phase 3).
 
-With the Helper away, the version can't be asked for, so CoffeePDF says so and doesn't save. The LibreOffice extension saves locally without saying. (owner, 2026-10-30)
+With the Helper away, the version can't be asked for, so CoffeePDF says so and doesn't save: `/v1/state` finds it away before the save. The LibreOffice extension saves locally without saying. (owner, 2026-10-30 and 2026-11-01)
 
 ### 6.6 Save as New Document, and Save to Healdan
 
@@ -278,7 +281,7 @@ The Healdan menu's Properties calls `/v1/properties {path}`. A `file` answer mea
   - A bar says the saves stay on this Mac until the Helper is back, and the Helper's resume at its next start sends them.
   - Open and Save use the Mac's own boxes. The bar goes once the Helper answers again.
   - The window asks the Helper again each time it comes forward, and each save asks too. Nothing polls. (owner, 2026-10-30)
-- **A save is refused** (`409 held-elsewhere` or `not-held`). The Helper ends the copy's check-out, keeps the copy and tells the user. CoffeePDF's next `/v1/state` shows the copy as read-only, and CoffeePDF offers Save as New Document. Today's Helper leaves `readOnly` false, which §4.4 item 10 changes.
+- **A save is refused** (`409 held-elsewhere` or `not-held`). The Helper ends the copy's check-out, keeps the copy and tells the user. CoffeePDF's next `/v1/state` shows the copy as read-only, with its title unchanged and `holdBy` null, and CoffeePDF offers Save as New Document. Healdan Helper 0.5.0 answers so (§4.4 item 10), as the owner's check H4 showed (§16, Phase 3).
 - **The Helper answers with an error** on a window route. The Helper's errors carry only a code, so CoffeePDF says in its own words what didn't work, with the status and code (such as *Healdan Helper answered 500 (internal-error)*). The user can carry on with the Mac's own boxes. (owner, 2026-10-30)
 - **Logs:** `~/Library/Logs/CoffeePDF/coffeepdf.log`. Until the Linux phase, the log on Linux goes in the settings folder (owner, 2026-10-30). Nothing logs the channel's secret or a file's contents.
 
@@ -310,6 +313,9 @@ The channel has no machine-readable contract the way the API's `openapi.yaml` is
 - `ChannelRoutes` in `CoffeePdf.Core/Helper/` lists every route CoffeePDF calls, with its body and answer, following the Desktop Clients page's table.
 - The fake Helper serves exactly those routes. A test fails if the client calls a route `ChannelRoutes` doesn't list.
 - Phase 4's acceptance runs against the real Helper. Any change to the channel in Healdan updates `ChannelRoutes` in the same release.
+- Healdan Helper 0.5.0 (M3.6 §6.5) changes no route or shape, but two meanings, and `ChannelRoutes` says so:
+  - `readOnly` is also true once a copy's saves have stopped (§4.4 item 10);
+  - `/v1/file` honours `app` (§4.4 item 4).
 
 ## 10. CI and releases (call)
 
@@ -344,7 +350,7 @@ The channel has no machine-readable contract the way the API's `openapi.yaml` is
 | 0. Foundation spike | The solution, CI, the licence key, and a window that opens one local PDF in the PdfViewer, packaged, signed and notarised. The checks in §14. | Proves the riskiest parts first. |
 | 1. Standalone app | Viewing, markup, forms, printing, Preferences, Open Recent, and becoming the default PDF app. | Useful on its own, and doesn't depend on Healdan. |
 | 2. Healdan in CoffeePDF | The channel client, the modes, and every flow in §6, against the fake Helper. | Built and tested without touching Healdan. |
-| 3. Healdan's milestone | §4.4, through its own spec in the Healdan repository, and then the web page's Open in App. | Changes nothing until CoffeePDF is installed with support on. |
+| 3. Healdan's milestone | §4.4, through its own spec in the Healdan repository, and then the web page's Open in App: Healdan's M3.6, "PDFs in CoffeePDF". | Changes nothing until CoffeePDF is installed with support on. |
 | 4. Acceptance | §2.5 on the owner's Mac, against the owner's server, then the v1.0 release. | |
 
 Each phase gets its own plan in `docs/superpowers/plans/`. Phase 0 is a spike: its findings are recorded in this spec, and any decision they force is put to the owner, before Phase 1's plan is written. (call)
@@ -367,7 +373,7 @@ Each phase gets its own plan in `docs/superpowers/plans/`. Phase 0 is a spike: i
 ## 15. Open items
 
 - **The licence** before the repository goes public (owner, §12).
-- **Healdan's milestone** gets its name and number in Healdan's roadmap during its own design session (§4.4).
+- **Healdan's milestone:** settled as M3.6, "PDFs in CoffeePDF", in its own design session (owner, 2026-11-01; §4.4).
 - **The Linux phase** starts after the Helper's Linux phase (M3's phase 2) lands.
 
 ## 16. Phase 0 and Phase 1 findings
@@ -742,6 +748,51 @@ what was planned. This is what the build showed, and what it changed. No owner's
   unticked, and issue #9's window switches.
   - The Healdan menu stays greyed out with no document: opening from Healdan is File › Open…, which goes to the
     Helper's Open window. No Open item is wanted in the Healdan menu. (owner, 2026-11-01)
+
+### Phase 3: Healdan's M3.6 (built 2026-11-01)
+
+- **What it is.** Healdan's M3.6, "PDFs in CoffeePDF", is the Helper's side of §4.4, as corrected there
+  ([spec](https://github.com/Healdan-Project/healdan/blob/master/docs/superpowers/specs/2026-11-01-m3-6-pdfs-in-coffeepdf-design.md),
+  [plan](https://github.com/Healdan-Project/healdan/blob/master/docs/superpowers/plans/2026-11-01-m3-6-pdfs-in-coffeepdf.md)).
+  The owner approved its design and plan on 2026-11-01. It was built the same day and merged in
+  Healdan-Project/healdan#150 (the Helper and its docs) and Healdan-Project/healdan#151 (the web page's Open in App for
+  PDFs). CoffeePDF's code didn't change for it.
+- **The owner's checks (2026-11-01).** On Healdan Helper 0.5.0-rc1, with CoffeePDF 0.2.1 and its Healdan support on,
+  against the owner's server. All twelve passed: §2.5's steps 1 to 7, M3.6's rows H1 to H4 (a crash, a restart,
+  CoffeePDF unavailable and a refused save), and the Helper's Settings. M3.6's plan has the full record ("Hands-on checks
+  on Healdan Helper 0.5.0-rc1").
+  - Step 1 ran by a typed `healdan://` link, since the web page's Open in App for PDFs waited for #151 and the server's
+    upgrade.
+  - Step 2: ⌘S made v1.1, with no temporary file left behind. Step 5: closing the read-only copy deleted it at once
+    (§4.4 item 11). Step 6: the filed copy's record named CoffeePDF (§4.4 item 4).
+  - H4: the channel answered `readOnly: true` with the title unchanged, and CoffeePDF went read-only and offered Save as
+    New Document (§6.9).
+- **What they showed for CoffeePDF.**
+  1. *Save as New Version with no unsaved changes.* The Helper sends the file as it is as the version at once, as it has
+     since M3 (`CopyCycle.MarkNextVersion`, and the Desktop Clients page says so). CoffeePDF says *The next save goes to
+     Healdan as a new version.* and follows nothing, so its title stays a version behind until the next save. Phase 2's
+     reading (§6.5) was wrong. Fixed (2026-11-01): it follows `/v1/saved` after `/v1/new-version`, as after a save, and
+     the message is gone. `Save_as_New_Version_with_nothing_to_save_follows_the_file_as_it_is_to_Healdan` replaces the
+     test of the message. Not yet checked on the Mac.
+     - The review of #11 found the same reading behind the order with unsaved changes: `MarkNextVersion` starts the
+       file's settle at once, so a save slower than 1.2 seconds after `/v1/new-version` left the old file as the
+       version. Save as New Version now asks `/v1/state`, saves, then calls `/v1/new-version`, so the Helper being away
+       is still found before anything is saved (owner, 2026-11-01). A save that fails asks for no version, and only a
+       copy whose saves are followed is followed (`Save_as_New_Version_saves_then_asks_for_a_version`,
+       `Save_as_New_Version_whose_save_fails_asks_for_no_version`).
+  2. *The read-only title.* M3.6's record says CoffeePDF marks the title read-only for a copy whose saves have stopped,
+     where §6.1 shows the Helper's title as it is. CoffeePDF's code shows the Helper's title as it is
+     (`WindowDocument.Title`). What disagreed was §6.1's table, whose read-only row gave only a read-only copy's title,
+     with ` (read-only)`. §6.1 now gives both. If the owner saw ` (read-only)` in the title bar after H4, it's a bug
+     still to find.
+  3. *A full rewrite.* The checked-out PDF went from 204,021 bytes to 39,504 at CoffeePDF's first save. The PdfViewer
+     rewrites an unsigned PDF whole (§16 row 1), which can drop unused objects and earlier revisions. Not yet shown:
+     that nothing the owner can see was lost. Compare that document's version before the save with the one after.
+- **Phase 2's list for Phase 3, settled.** `IsAppFile` knows the lock (§4.4 item 1). `"path": null` in `/v1/save-new`
+  works (M3.6 §6.2), and step 6 filed a local PDF, which sends `"replaces": null`. The Helper tracks CoffeePDF's copies
+  (§4.4 item 11). Step 7 checked the menu bar on the Mac. Still open: a hand check of ⌘S then ⌘W on a large copy.
+- **Left before v1.0.** §2.5 step 1 from the web page, once the owner's server is upgraded; Healdan Helper 0.5.0;
+  finding 1 checked on the Mac, and findings 2 and 3 settled; then CoffeePDF v1.0 (§13).
 
 ### The owner's to-do list, to fill the pending rows
 

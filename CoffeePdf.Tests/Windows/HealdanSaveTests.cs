@@ -131,9 +131,16 @@ public sealed class HealdanSaveTests : IDisposable
     }
 
     [PdfViewerFact]
-    public async Task Save_as_New_Version_asks_for_a_version_then_saves()
+    public async Task Save_as_New_Version_saves_then_asks_for_a_version()
     {
         var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        // The Helper sends the file as it is 1.2 seconds after /v1/new-version, so the save must be in it by then.
+        var notesWhenAsked = -1;
+        _helper.Answer(ChannelRoutes.NewVersion, _ =>
+        {
+            notesWhenAsked = PdfAnnotations.Read(File.ReadAllBytes(copy), 0).Count;
+            return Task.FromResult<JsonNode>(new JsonObject());
+        });
 
         var (saved, routes, errors) = await Headless.RunAsync(async () =>
         {
@@ -147,30 +154,44 @@ public sealed class HealdanSaveTests : IDisposable
 
         Assert.True(saved);
         Assert.Empty(errors);
-        Assert.Equal(new[] { "state", "new-version", "saved", "closed" }, routes);
+        Assert.Equal(1, notesWhenAsked);
+        Assert.Equal(new[] { "state", "state" }, routes.Take(2)); // the open's, then the one that finds the Helper there
+        // The save's follow and the version's question go together, in either order.
+        Assert.Equal(new[] { "new-version", "saved" }, routes.Skip(2).Take(2).Order(StringComparer.Ordinal));
+        Assert.Equal("closed", Assert.Single(routes.Skip(4)));
         Assert.Equal(new[] { copy }, _helper.CallsTo(ChannelRoutes.NewVersion).Select(b => (string?)b["path"]));
         Assert.Equal(TestWindows.Author, Assert.Single(PdfAnnotations.Read(File.ReadAllBytes(copy), 0)).Author);
     }
 
     [PdfViewerFact]
-    public async Task Save_as_New_Version_with_nothing_to_save_says_the_next_save_goes_as_the_version()
+    public async Task Save_as_New_Version_with_nothing_to_save_follows_the_file_as_it_is_to_Healdan()
     {
         var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+        // The Helper sends the file as it is as the version, and /v1/saved answers once Healdan has it.
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _helper.Answer(ChannelRoutes.Saved, async _ =>
+        {
+            await held.Task; // the answer waits, so the test sees the version on its way
+            return FakeHelper.Json(Version(copy, "3.0"));
+        });
 
-        var (asked, errors, title) = await Headless.RunAsync(async () =>
+        var (asked, during, errors) = await Headless.RunAsync(async () =>
         {
             var (window, errorList) = await TestWindows.OpenAsync(copy, _helper.Link());
             var result = await window.SaveAsNewVersionAsync();
-            var state = (result, errorList.ToList(), window.Title);
+            var onItsWay = window.Title;
+            held.SetResult();
+            await TestWindows.WaitForAsync(() => window.Title == "Settlement Agreement #1234 v3.0");
+            var state = (result, onItsWay, errorList.ToList());
             await CloseAsync(window);
             return state;
         });
 
         Assert.True(asked);
-        Assert.Equal("The next save goes to Healdan as a new version. There are no changes to save yet.", Assert.Single(errors));
-        Assert.Equal("Settlement Agreement #1234 v2.1", title); // no save is on its way
-        Assert.Equal(new[] { "state", "new-version", "closed" }, _helper.Routes);
-        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
+        Assert.Equal("Settlement Agreement #1234 v2.1 — Saving to Healdan…", during);
+        Assert.Empty(errors);
+        Assert.Equal(new[] { "state", "new-version", "saved", "closed" }, _helper.Routes);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy)); // nothing was saved: the file goes up as it is
     }
 
     [PdfViewerFact]
@@ -193,6 +214,29 @@ public sealed class HealdanSaveTests : IDisposable
         Assert.Equal("“Settlement Agreement” couldn’t be saved as a new version. Healdan Helper isn’t running. Try again once it is.", Assert.Single(errors));
         Assert.True(unsaved);
         Assert.Equal(DocumentMode.HelperAway, mode);
+        Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
+    }
+
+    [PdfViewerFact]
+    public async Task Save_as_New_Version_whose_save_fails_asks_for_no_version()
+    {
+        var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
+
+        var (saved, errors, unsaved) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(copy, _helper.Link());
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
+            window.WriteFile = (_, _) => throw new IOException("The disk is full.");
+            var result = await window.SaveAsNewVersionAsync();
+            var state = (result, errorList.ToList(), window.HasUnsavedChanges);
+            await CloseAsync(window);
+            return state;
+        });
+
+        Assert.False(saved);
+        Assert.Contains("couldn’t be saved", Assert.Single(errors));
+        Assert.True(unsaved);
+        Assert.Empty(_helper.CallsTo(ChannelRoutes.NewVersion)); // it would send the file as it is, without the changes
         Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
     }
 
@@ -257,11 +301,15 @@ public sealed class HealdanSaveTests : IDisposable
         var copy = _helper.AddCopy("Settlement Agreement", 1234, "2.1");
         var asked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var answer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _helper.Answer(ChannelRoutes.NewVersion, async _ =>
+        var states = 0;
+        _helper.Answer(ChannelRoutes.State, async _ =>
         {
-            asked.SetResult();
-            await answer.Task; // the Helper's answer waits, so the window closes before it comes
-            return new JsonObject();
+            if (Interlocked.Increment(ref states) == 2) // the open's answer comes at once, and the save's waits
+            {
+                asked.SetResult();
+                await answer.Task; // the Helper's answer waits, so the window closes before it comes
+            }
+            return FakeHelper.Json(_helper.StateOf(copy));
         });
 
         var saved = await Headless.RunAsync(async () =>
@@ -276,7 +324,7 @@ public sealed class HealdanSaveTests : IDisposable
         });
 
         Assert.False(saved);
-        Assert.Equal(new[] { "state", "new-version", "closed" }, _helper.Routes);
+        Assert.Equal(new[] { "state", "state", "closed" }, _helper.Routes);
         Assert.Equal(MinimalPdf.Build(), File.ReadAllBytes(copy));
     }
 }
