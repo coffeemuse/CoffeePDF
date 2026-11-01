@@ -1,0 +1,42 @@
+<Project>
+  <!--
+    TEMPORARY, until Avalonia releases a fix for AvaloniaUI/Avalonia#22285 (README.md says how to remove it).
+
+    CoffeePDF ships libAvaloniaNative.dylib from this folder, Avalonia 12.1.4's macOS library with that issue's patch
+    (build.sh), in place of the Avalonia.Native package's. On macOS 27 the package's library leaves the menu bar showing
+    only the CoffeePDF menu after a window switch (issue #9). The swap covers a build, where the library goes to
+    runtimes/osx/native, and package.sh's publish for osx-arm64, where it goes beside the binary.
+
+    The library and Avalonia's .NET side must be the same version, so the build stops when Avalonia.Native isn't
+    12.1.4: an upgrade then either removes this, if the new version has the fix, or rebuilds the library for it.
+  -->
+  <PropertyGroup>
+    <PatchedAvaloniaNativeVersion>12.1.4</PatchedAvaloniaNativeVersion>
+    <PatchedAvaloniaNativeLibrary>$(MSBuildThisFileDirectory)libAvaloniaNative.dylib</PatchedAvaloniaNativeLibrary>
+  </PropertyGroup>
+
+  <Target Name="UsePatchedAvaloniaNative" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <_StockAvaloniaNativeRuntimeTarget Include="@(RuntimeTargetsCopyLocalItems)"
+                                         Condition="'%(Filename)%(Extension)' == 'libAvaloniaNative.dylib'" />
+      <_StockAvaloniaNativeNative Include="@(NativeCopyLocalItems)"
+                                  Condition="'%(Filename)%(Extension)' == 'libAvaloniaNative.dylib'" />
+      <_StockAvaloniaNative Include="@(_StockAvaloniaNativeRuntimeTarget);@(_StockAvaloniaNativeNative)" />
+    </ItemGroup>
+
+    <Error Condition="'@(_StockAvaloniaNative)' == ''"
+           Text="The Avalonia.Native package brought no libAvaloniaNative.dylib, so the patched one for AvaloniaUI/Avalonia#22285 has nothing to replace. See packaging/avalonia-native/README.md." />
+    <Error Condition="'%(_StockAvaloniaNative.NuGetPackageVersion)' != '$(PatchedAvaloniaNativeVersion)'"
+           Text="Avalonia.Native is %(_StockAvaloniaNative.NuGetPackageVersion), but packaging/avalonia-native/libAvaloniaNative.dylib, patched for AvaloniaUI/Avalonia#22285, is built from $(PatchedAvaloniaNativeVersion). If %(_StockAvaloniaNative.NuGetPackageVersion) fixes that issue, remove the patch; otherwise rebuild it for %(_StockAvaloniaNative.NuGetPackageVersion). packaging/avalonia-native/README.md says how." />
+    <Error Condition="!Exists('$(PatchedAvaloniaNativeLibrary)')"
+           Text="packaging/avalonia-native/libAvaloniaNative.dylib is missing: packaging/avalonia-native/build.sh makes it." />
+
+    <!-- The same items, pointing at the patched library: a transform keeps each one's metadata, such as where it goes. -->
+    <ItemGroup>
+      <RuntimeTargetsCopyLocalItems Remove="@(_StockAvaloniaNativeRuntimeTarget)" />
+      <RuntimeTargetsCopyLocalItems Include="@(_StockAvaloniaNativeRuntimeTarget->'$(PatchedAvaloniaNativeLibrary)')" />
+      <NativeCopyLocalItems Remove="@(_StockAvaloniaNativeNative)" />
+      <NativeCopyLocalItems Include="@(_StockAvaloniaNativeNative->'$(PatchedAvaloniaNativeLibrary)')" />
+    </ItemGroup>
+  </Target>
+</Project>

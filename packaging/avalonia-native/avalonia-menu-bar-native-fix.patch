@@ -1,0 +1,319 @@
+diff --git a/native/Avalonia.Native/src/OSX/AvnWindow.mm b/native/Avalonia.Native/src/OSX/AvnWindow.mm
+index 5912ac90aa..d6bbe72f95 100644
+--- a/native/Avalonia.Native/src/OSX/AvnWindow.mm
++++ b/native/Avalonia.Native/src/OSX/AvnWindow.mm
+@@ -111,23 +111,75 @@
+     }
+ }
+ 
+--(void) showWindowMenuWithAppMenu
++// **Moving the application menu between bars without blanking the one on screen.**
++//
++// There is one application menu (the bold app-name menu) and each bar borrows it: it is taken out of whichever bar holds
++// it and put first in the bar about to be installed. Taking it out of the bar that is *still on screen* leaves that bar's
++// first slot to its second title — which macOS always draws as the application's name — so for one frame the first real
++// menu (*File*) disappears, before [NSApp setMenu:] replaces the bar. Measured on macOS 27: one ~50 ms frame per switch.
++//
++// So a stand-in takes the application menu's place in the bar it leaves, and is dropped again when that bar gets the
++// application menu back. The bar on screen never loses its first item.
++static const NSInteger kAvnAppMenuStandInTag = 0x41766E53; // 'AvnS'
++
++static void MoveAppMenuItemInto(NSMenu* target)
+ {
+-    if(_menu != nullptr)
++    NSMenuItem* item = ::GetAppMenuItem();
++
++    if(item == nullptr)
++        return;
++
++    NSMenu* from = [item menu];
++
++    if(from == target && [target indexOfItem:item] == 0)
++        return;
++
++    if(from != nullptr)
+     {
+-        auto appMenuItem = ::GetAppMenuItem();
++        NSMenuItem* standIn = [[NSMenuItem alloc] initWithTitle:[item title] action:nil keyEquivalent:@""];
++        [standIn setTag:kAvnAppMenuStandInTag];
++        [standIn setSubmenu:[NSMenu new]];
++        [from insertItem:standIn atIndex:[from indexOfItem:item]];
++        [from removeItem:item];
++    }
+ 
+-        if(appMenuItem != nullptr)
+-        {
+-            auto appMenu = [appMenuItem menu];
++    if([target numberOfItems] > 0 && [[target itemAtIndex:0] tag] == kAvnAppMenuStandInTag)
++        [target removeItemAtIndex:0];
+ 
+-            [appMenu removeItem:appMenuItem];
++    [target insertItem:item atIndex:0];
++}
+ 
+-            [_menu insertItem:appMenuItem atIndex:0];
++-(void) showWindowMenuWithAppMenu
++{
++    if(_menu == nullptr)
++    {
++        // **No menu has been exported for this window *yet* — or it has none.** Here the two look the same:
++        // AppKit makes a window key while it is being shown, and a menu set in the window's Opened
++        // handler reaches -[applyMenu:] only after that, in the same turn of the main loop. Putting the
++        // application-only bar up now and the window's own a moment later is two installs, which macOS 27
++        // shows as ~500 ms of an empty bar.
++        //
++        // So decide one turn later, by which time a menu that is coming has come. A window that really has
++        // none still gets the application-only bar, as it always has — one turn late, and in one install.
++        dispatch_async(dispatch_get_main_queue(), ^{
++            if(_menu == nullptr && [self isKeyWindow])
++                [self showAppMenuOnly];
++        });
++        return;
++    }
++
++    if(_menu != nullptr)
++    {
++        SetMenuBarOwner(_menu);
++        if(::GetAppMenuItem() != nullptr)
++        {
++            MoveAppMenuItemInto(_menu);
+ 
+             [_menu setHasGlobalMenuItem:true];
+         }
+ 
++        RenewMenuBarItems(_menu);
++
+         [NSApp setMenu:_menu];
+     }
+     else
+@@ -138,20 +190,19 @@
+ 
+ -(void) showAppMenuOnly
+ {
++    SetMenuBarOwner(nullptr);
++
+     auto appMenuItem = ::GetAppMenuItem();
+ 
+     if(appMenuItem != nullptr)
+     {
+         auto appMenu = ::GetAppMenu();
+ 
+-        [[appMenuItem menu] removeItem:appMenuItem];
+-
+-        if(_menu != nullptr)
+-        {
+-            [_menu setHasGlobalMenuItem:false];
+-        }
++        // A bar the application menu leaves keeps a stand-in in its first slot, so it keeps its offset too: its
++        // hasGlobalMenuItem stays as it was.
++        MoveAppMenuItemInto(appMenu->GetNative());
+ 
+-        [appMenu->GetNative() addItem:appMenuItem];
++        RenewMenuBarItems(appMenu->GetNative());
+ 
+         [NSApp setMenu:appMenu->GetNative()];
+     }
+@@ -213,6 +264,24 @@
+ - (void)windowWillClose:(NSNotification *_Nonnull)notification
+ {
+     _closed = true;
++
++    // **Let the next window claim the bar before resetting it.** Closing a window usually promotes
++    // another one, and AppKit does not promise that the promoted window's -[becomeKeyWindow] runs
++    // before this notification — measured here it runs *after*. Resetting the bar straight away would
++    // therefore put the application-only bar between the two, which is the same two-step swap this
++    // patch removes everywhere else, and macOS 27 holds it for ~500 ms.
++    //
++    // One turn of the main loop is enough, and the test is ownership rather than a clock: by then
++    // whoever is taking key has run becomeKeyWindow and taken the bar. If nobody did — this was the
++    // last window — the application-only bar goes up, one turn late, which is what it is for.
++    if(_menu != nullptr && MenuBarOwner() == _menu)
++    {
++        AvnMenu* closing = _menu;
++        dispatch_async(dispatch_get_main_queue(), ^{
++            if(MenuBarOwner() == closing)
++                [self showAppMenuOnly];
++        });
++    }
+     auto parent = _parent.tryGetWithCast<WindowBaseImpl>();
+     if (parent)
+     {
+@@ -418,8 +487,18 @@
+     if(parent)
+         parent->BaseEvents->Deactivated();
+ 
+-    [self showAppMenuOnly];
+-    
++    // **The menu bar is not touched here, deliberately.** macOS has one menu bar and it belongs to the
++    // application; a window that is merely losing key has no business emptying it. Whoever takes key
++    // fills it in -[becomeKeyWindow], and when the application as a whole goes to the background macOS
++    // swaps in the other application's bar by itself.
++    //
++    // Blanking it here achieved nothing visible and cost a second [NSApp setMenu:] per switch, which
++    // on macOS 27 is held on screen for ~500 ms before the real one is drawn. One setMenu: per switch
++    // redraws in the same frame.
++    //
++    // The case that does need the application menu alone is the last window going away, and that is
++    // handled in -[windowWillClose:].
++
+     [self invalidateShadow];
+ }
+ 
+diff --git a/native/Avalonia.Native/src/OSX/common.h b/native/Avalonia.Native/src/OSX/common.h
+index 6564a457af..7627163b31 100644
+--- a/native/Avalonia.Native/src/OSX/common.h
++++ b/native/Avalonia.Native/src/OSX/common.h
+@@ -39,6 +39,9 @@ extern void SetServicesMenu (IAvnMenu* menu);
+ class AvnAppMenu;
+ extern AvnAppMenu* GetAppMenu ();
+ extern NSMenuItem* GetAppMenuItem ();
++extern void RenewMenuBarItems(NSMenu* bar);
++extern void SetMenuBarOwner(NSMenu* _Nullable menu);
++extern NSMenu* _Nullable MenuBarOwner();
+ extern void SetDockMenu(NSMenu* menu);
+ 
+ extern void InitializeAvnApp(IAvnApplicationEvents* events, bool disableAppDelegate);
+diff --git a/native/Avalonia.Native/src/OSX/menu.h b/native/Avalonia.Native/src/OSX/menu.h
+index 72c19eb120..e457420325 100644
+--- a/native/Avalonia.Native/src/OSX/menu.h
++++ b/native/Avalonia.Native/src/OSX/menu.h
+@@ -23,6 +23,7 @@ class AvnAppMenu;
+ @interface AvnMenuItem : NSMenuItem
+ - (id) initWithAvnAppMenuItem: (AvnAppMenuItem*)menuItem;
+ - (void)didSelectItem:(id)sender;
++- (AvnAppMenuItem*)owner;
+ @end
+ 
+ class AvnAppMenuItem : public ComSingleObject<IAvnMenuItem, &IID_IAvnMenuItem>
+@@ -61,6 +62,8 @@ public:
+     bool EvaluateItemEnabled();
+     
+     void RaiseOnClicked();
++
++    void Renew();
+ };
+ 
+ class AvnAppMenu;
+diff --git a/native/Avalonia.Native/src/OSX/menu.mm b/native/Avalonia.Native/src/OSX/menu.mm
+index e664ee0ad6..ebecea8365 100644
+--- a/native/Avalonia.Native/src/OSX/menu.mm
++++ b/native/Avalonia.Native/src/OSX/menu.mm
+@@ -75,6 +75,11 @@
+         return;
+     item->RaiseOnClicked();
+ }
++
++- (AvnAppMenuItem*)owner
++{
++    return _item.tryGet();
++}
+ @end
+ 
+ AvnAppMenuItem::AvnAppMenuItem(bool isSeparator)
+@@ -98,6 +103,76 @@ NSMenuItem* AvnAppMenuItem::GetNative()
+     return _native;
+ }
+ 
++static NSMenuItem* s_appMenuItem = nullptr;
++
++// Swaps this item's NSMenuItem for a fresh one that carries everything the old one did, in the same
++// place. See RenewMenuBarItems for why a menu-bar title needs this.
++void AvnAppMenuItem::Renew()
++{
++    if(![_native isKindOfClass:[AvnMenuItem class]])
++        return;
++
++    NSMenuItem* old = _native;
++    AvnMenuItem* fresh = [[AvnMenuItem alloc] initWithAvnAppMenuItem: this];
++
++    [fresh setTitle:[old title]];
++    [fresh setToolTip:[old toolTip]];
++    [fresh setKeyEquivalent:[old keyEquivalent]];
++    [fresh setKeyEquivalentModifierMask:[old keyEquivalentModifierMask]];
++    [fresh setState:[old state]];
++    [fresh setOnStateImage:[old onStateImage]];
++    [fresh setImage:[old image]];
++    [fresh setHidden:[old isHidden]];
++    [fresh setEnabled:[old isEnabled]];
++    [fresh setTarget:[old target] == old ? fresh : [old target]];
++    [fresh setAction:[old action]];
++
++    NSMenu* parent = [old menu];
++    NSInteger index = parent != nullptr ? [parent indexOfItem:old] : -1;
++    NSMenu* submenu = [old submenu];
++
++    if(parent != nullptr)
++        [parent removeItem:old];
++
++    // A submenu may belong to one item at a time.
++    [old setSubmenu:nullptr];
++    [fresh setSubmenu:submenu];
++
++    if(parent != nullptr)
++        [parent insertItem:fresh atIndex:index];
++
++    if(s_appMenuItem == old)
++        s_appMenuItem = fresh;
++
++    _native = fresh;
++}
++
++// **Gives every title of a menu bar a fresh NSMenuItem, just before that bar is installed.**
++//
++// macOS 27: if NSApp's menu is replaced within ~100 ms of a menu item's key equivalent, the top-level
++// title that item lives under stops opening for good — clicked, it highlights and nothing drops down.
++// The damage belongs to that title's NSMenuItem object: its neighbours keep working, re-inserting the
++// same object does not help, and a new NSMenuItem carrying the same submenu opens normally. A window
++// switch is such a replacement, and opening a window is what a shortcut usually does, so the two land
++// a millisecond apart. Renewing the titles on every install means a damaged one never reaches the
++// screen. Only while the bar is not installed: an installed bar edited in place is not repainted.
++void RenewMenuBarItems(NSMenu* bar)
++{
++    if(bar == nullptr || [NSApp mainMenu] == bar)
++        return;
++
++    for(NSMenuItem* item in [[bar itemArray] copy])
++    {
++        if(![item isKindOfClass:[AvnMenuItem class]])
++            continue;
++
++        auto owner = [(AvnMenuItem*)item owner];
++
++        if(owner != nullptr)
++            owner->Renew();
++    }
++}
++
+ HRESULT AvnAppMenuItem::SetSubMenu (IAvnMenu* menu)
+ {
+     START_COM_CALL;
+@@ -494,7 +569,6 @@ extern IAvnMenuItem* CreateAppMenuItemSeparator()
+ }
+ 
+ static ComStaticPtr<AvnAppMenu> s_appMenu;
+-static NSMenuItem* s_appMenuItem = nullptr;
+ 
+ extern void SetAppMenu(IAvnMenu *menu)
+ {
+@@ -537,6 +611,21 @@ extern void SetServicesMenu (IAvnMenu* menu)
+     [NSApplication sharedApplication].servicesMenu = nativeMenu->GetNative();
+ }
+ 
++// Which window's NSMenu is currently the application's menu bar. macOS owns one bar; this is simply a
++// record of who last filled it, so that a *closing* window can tell "I still own it" (hand it back)
++// from "someone else already took it" (do nothing).
++static NSMenu* s_menuBarOwner = nullptr;
++
++extern void SetMenuBarOwner(NSMenu* menu)
++{
++    s_menuBarOwner = menu;
++}
++
++extern NSMenu* MenuBarOwner()
++{
++    return s_menuBarOwner;
++}
++
+ extern AvnAppMenu* GetAppMenu ()
+ {
+     return s_appMenu.getRaw();

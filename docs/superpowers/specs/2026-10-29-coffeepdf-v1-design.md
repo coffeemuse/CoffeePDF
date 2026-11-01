@@ -136,6 +136,8 @@ It uses .NET 10, Avalonia 12.1 (matching the Helper), and `Avalonia.Controls.Pdf
 - **`CoffeePdf.Core.Tests/`:** xUnit, against the fake Helper (§9).
 - **`CoffeePdf.Tests/`:** xUnit, with Avalonia headless.
 - **`packaging/mac/`:** the app bundle and its signed, notarised disk image.
+- **`packaging/avalonia-native/`:** TEMPORARY. A patched build of Avalonia's macOS library, shipped until Avalonia
+  fixes AvaloniaUI/Avalonia#22285 (§16, Issue #9).
 
 Where the PdfViewer lacks a feature, CoffeePDF calls PDFium itself, starting with the markup author (§7). It moves to the control's own when a newer PdfViewer adds the feature. (owner, 2026-10-30; §16 Decision 1) It uses its own copy of PDFium, separate from the PdfViewer's, and that code lives in `CoffeePdf.Core/Pdf/` (§16 Phase 1).
 
@@ -625,7 +627,8 @@ what was planned. This is what the build showed, and what it changed. No owner's
      didn't ask. Use with Healdan turned support on, and the Healdan menu showed.
   2. *Settings.* The Healdan section showed with no clipped labels, and the box shows and hides the Healdan menu.
      - One flaw: back in a document window after the box changes, only the CoffeePDF menu is drawn until the pointer
-       reaches the menu bar. That's issue #9, a fix for after Phase 2.
+       reaches the menu bar. That's issue #9, a fix for after Phase 2. It turned out to be Avalonia's, and needs no
+       change to the box (§16, Issue #9).
      - While Settings is in front the bar holds only the CoffeePDF menu, as Avalonia gives a window without a menu.
      - A change made in the window in front (check 7's Turn On Healdan Support) draws in full.
   3. *Support off.* No Healdan menu, and ⌘O and ⇧⌘S showed the Mac's own panels.
@@ -678,6 +681,38 @@ what was planned. This is what the build showed, and what it changed. No owner's
     its next start (the owner's check 4; Healdan-Project/healdan#134).
   - The menu bar hiding the Healdan item is only checked headless. §2.5 step 7's walkthrough checks it on the Mac.
   - Add a hand check of ⌘S then ⌘W on a large copy, since a close now waits for the save to finish.
+
+### Issue #9: the macOS 27 menu bar (2026-10-31)
+
+- **What's wrong.** Observed by the owner on macOS 27.0.1, with Avalonia 12.1.4. After a switch between CoffeePDF's
+  windows, the menu bar shows only the CoffeePDF menu:
+  - between two documents, for 2–3 seconds;
+  - from Settings back to a document, until the pointer reaches the bar, with or without a change to the Healdan box.
+
+  ⌘-Tab away and back draws the whole bar.
+- **Ruled out.** Holding a background window's change to the Healdan menu until it came to the front made no
+  difference on the Mac (built, checked by the owner, reverted). That fits the plain switch failing too.
+- **The cause is Avalonia's:** [AvaloniaUI/Avalonia#22285](https://github.com/AvaloniaUI/Avalonia/issues/22285), open,
+  with no fix released (12.1.4 is the latest).
+  - On every change of key window, Avalonia gives `NSApp` a different `NSMenu` twice, about 6 ms apart: the application
+    menu alone, then the new window's own. macOS 27 draws the first and holds it. Read in Avalonia 12.1.4's
+    `AvnWindow.mm`: `windowDidResignKey:` calls `showAppMenuOnly`, and `becomeKeyWindow` calls
+    `showWindowMenuWithAppMenu`.
+  - The issue reports a second defect with the same cause: a window change that a keyboard shortcut makes, such as ⌘,,
+    can stop that shortcut's top-level menu opening for the rest of the run. Not yet checked in CoffeePDF.
+- **Decision (owner, 2026-10-31): a TEMPORARY patched library.** CoffeePDF ships Avalonia 12.1.4's macOS library built
+  with the issue's native patch, in place of the package's, until an Avalonia release fixes the issue.
+  - `packaging/avalonia-native/` holds the patch, `build.sh`, which builds the library with the Xcode command-line
+    tools, the library, and the MSBuild file that swaps it in. Its README says why, and how to rebuild and remove it.
+  - The build stops when Avalonia.Native isn't 12.1.4, so an upgrade can't ship the library under a newer Avalonia.
+  - `package.sh` stops if the bundle's library isn't the patched one.
+  - Removing it is in the roadmap's backlog.
+  - The options set aside were a runtime workaround, which would replace Avalonia's `showAppMenuOnly` from C#, and
+    waiting for Avalonia. The workaround couldn't give the bar fresh menu items, so it wouldn't fix the second defect,
+    and nobody had measured it on its own.
+- **The owner's check on the Mac passed (2026-10-31).** On an unsigned build with the patched library, macOS 27.0.1,
+  the README's checks looked good, and the menu bar showed in full, consistently, after window switches. The build
+  asked again for access to the documents' folder, as a build with another signature does; that isn't the patch's.
 
 ### The owner's to-do list, to fill the pending rows
 
