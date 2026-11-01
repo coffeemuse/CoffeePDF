@@ -51,7 +51,7 @@ public sealed class HelperChannel(HelperFolders folders, CoffeeLog log, IReadOnl
     public async Task<CopyState> AdoptedAsync(string path) =>
         CopyState.From(await CallAsync(ChannelRoutes.Adopted, WithPath(path), default), path);
 
-    /// <summary><c>/v1/new-version</c>: the copy's next save goes up as a version (§6.5).</summary>
+    /// <summary><c>/v1/new-version</c>: the copy's file goes up as a version once it has settled, as it is if no save comes (§6.5).</summary>
     public Task NewVersionAsync(string path) => CallAsync(ChannelRoutes.NewVersion, WithPath(path), default);
 
     /// <summary><c>/v1/closed</c>: the copy's window has closed, so the Helper checks it in (§6.8).</summary>

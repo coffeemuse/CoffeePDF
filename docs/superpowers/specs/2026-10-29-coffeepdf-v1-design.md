@@ -230,11 +230,11 @@ Phase 0 found the temporary file and the rename (§16 row 2). The owner chose to
 
 ### 6.5 Save as New Version
 
-The Healdan menu's Save as New Version calls `/v1/new-version {path}`, then saves. The Helper sends that save as a version, giving `#1234 v3`.
+The Healdan menu's Save as New Version, with unsaved changes, calls `/v1/state {path}`, saves, then calls `/v1/new-version {path}`. The Helper sends the copy's file as a version once it has settled, 1.2 seconds after `/v1/new-version`, so the save is written first: one written after, and slower than that, would miss the version. The save goes as the version, giving `#1234 v3.0`. A save that fails asks for no version, since the file as it is would go instead (§16, Phase 3).
 
-With no unsaved changes it saves nothing: the Helper sends the file as it is as the version, and CoffeePDF follows it with `/v1/saved` as it follows a save (§6.4), so the title moves on to `#1234 v3`. Phase 2 had it say *The next save goes to Healdan as a new version.* and follow nothing, on a wrong reading of the Helper (§16, Phase 3).
+With no unsaved changes it saves nothing: the Helper sends the file as it is as the version, and CoffeePDF follows it with `/v1/saved` as it follows a save (§6.4), so the title moves on to `#1234 v3.0`. Phase 2 had it say *The next save goes to Healdan as a new version.* and follow nothing, on a wrong reading of the Helper (§16, Phase 3).
 
-With the Helper away, the version can't be asked for, so CoffeePDF says so and doesn't save. The LibreOffice extension saves locally without saying. (owner, 2026-10-30)
+With the Helper away, the version can't be asked for, so CoffeePDF says so and doesn't save: `/v1/state` finds it away before the save. The LibreOffice extension saves locally without saying. (owner, 2026-10-30 and 2026-11-01)
 
 ### 6.6 Save as New Document, and Save to Healdan
 
@@ -745,6 +745,12 @@ what was planned. This is what the build showed, and what it changed. No owner's
      reading (§6.5) was wrong. Fixed (2026-11-01): it follows `/v1/saved` after `/v1/new-version`, as after a save, and
      the message is gone. `Save_as_New_Version_with_nothing_to_save_follows_the_file_as_it_is_to_Healdan` replaces the
      test of the message. Not yet checked on the Mac.
+     - The review of #11 found the same reading behind the order with unsaved changes: `MarkNextVersion` starts the
+       file's settle at once, so a save slower than 1.2 seconds after `/v1/new-version` left the old file as the
+       version. Save as New Version now asks `/v1/state`, saves, then calls `/v1/new-version`, so the Helper being away
+       is still found before anything is saved (owner, 2026-11-01). A save that fails asks for no version, and only a
+       copy whose saves are followed is followed (`Save_as_New_Version_saves_then_asks_for_a_version`,
+       `Save_as_New_Version_whose_save_fails_asks_for_no_version`).
   2. *The read-only title.* M3.6's record says CoffeePDF marks the title read-only for a copy whose saves have stopped,
      where §6.1 shows the Helper's title as it is. CoffeePDF's code shows the Helper's title as it is
      (`WindowDocument.Title`). What disagreed was §6.1's table, whose read-only row gave only a read-only copy's title,

@@ -845,17 +845,32 @@ public partial class DocumentWindow : Window
     }
 
     /// <summary>
-    /// Save as New Version (spec §6.5): the Helper sends the copy's next save as a version, and the changes are saved.
-    /// With nothing to save, the Helper sends the file as it is as the version, so nothing is saved and that is
-    /// followed, as a save is (§16, Phase 3). With the Helper away, the version can't be asked for, so nothing is saved,
-    /// and the user is told (Phase 2's plan, question 9).
+    /// Save as New Version (spec §6.5): the Helper sends the file as a version once it has settled, 1.2 seconds after
+    /// <c>/v1/new-version</c>, so the changes are saved first: a save written after it, and slower than that, would miss.
+    /// <c>/v1/state</c> comes before the save: with the Helper away, the version can't be asked for, so nothing is saved,
+    /// and the user is told (Phase 2's plan, question 9). With nothing to save, the file as it is goes as the version,
+    /// and that is followed, as a save is (§16, Phase 3). A save that fails asks for no version.
     /// </summary>
     internal async Task<bool> SaveAsNewVersionAsync()
     {
         if (_moving || _document is not { Mode: DocumentMode.Editable } document || _path is not { } path)
             return false;
+        var saved = false;
         try
         {
+            if (HasUnsavedChanges)
+            {
+                var state = await Healdan.Channel.StateAsync(path);
+                if (_closed || _path != path || _document is null)
+                    return false; // the window closed, or moved to another file, while the Helper was answering
+                _document = _document.Answered(state);
+                ApplyMode();
+                if (_document.Mode != DocumentMode.Editable || !await SaveAsync())
+                    return false; // its saves have stopped meanwhile (§6.9), or the save failed and has said so
+                saved = true;
+                if (_closed || _path != path)
+                    return false;
+            }
             await Healdan.Channel.NewVersionAsync(path);
         }
         catch (HelperUnreachableException)
@@ -871,9 +886,9 @@ public partial class DocumentWindow : Window
         }
         if (_closed || _path != path)
             return false; // the window closed, or moved to another file, while the Helper was answering
-        if (HasUnsavedChanges)
-            return await SaveAsync();
-        Follow();
+        // A save is followed already, and /v1/saved waits for a Save as New Version still to go.
+        if (!saved && _document?.FollowsSaves == true)
+            Follow();
         return true;
     }
 

@@ -59,7 +59,7 @@ public static class ChannelRoutes
         """{"path"}""", "the copy's state once Healdan has every save written so far, at once when nothing is on its way, else after 120 s as it is");
 
     public static readonly ChannelRoute NewVersion = new("new-version", ChannelWait.Quick,
-        """{"path"}""", "{}; the copy's next save goes up as a version");
+        """{"path"}""", "{}; the copy's file goes up as a version once it has settled, 1.2 s on: a save written by then, else the file as it is (spec §6.5)");
 
     public static readonly ChannelRoute Properties = new("properties", ChannelWait.Window,
         """{"path"}""", """{"action": "saved" | "cancel" | "file"}; file means it isn't in Healdan, so the caller runs Save to Healdan""");
