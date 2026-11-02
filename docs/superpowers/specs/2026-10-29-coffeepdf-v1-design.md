@@ -791,6 +791,12 @@ what was planned. This is what the build showed, and what it changed. No owner's
 - **Phase 2's list for Phase 3, settled.** `IsAppFile` knows the lock (§4.4 item 1). `"path": null` in `/v1/save-new`
   works (M3.6 §6.2), and step 6 filed a local PDF, which sends `"replaces": null`. The Helper tracks CoffeePDF's copies
   (§4.4 item 11). Step 7 checked the menu bar on the Mac. Still open: a hand check of ⌘S then ⌘W on a large copy.
+- **The release `v0.3.0` (2026-11-01).** The first release that isn't a pre-release, tagged on `main` at 703f992, after
+  #11 and #12. It has finding 1's fix and the menu bar with no window open, so the checks left below can run on it. CI's
+  tests passed, and it signed the app and the disk image with the owner's Developer ID, notarised and stapled both, and
+  attached `CoffeePDF-0.3.0.dmg`, 47,505,143 bytes, to the release. The owner downloaded it in Safari, so macOS
+  quarantined it, and installed it in Applications. Gatekeeper passed (`docs/RELEASING.md`), and `spctl -a -vv` gave
+  `accepted` and `source=Notarized Developer ID`.
 - **Left before v1.0.** §2.5 step 1 from the web page, once the owner's server is upgraded; Healdan Helper 0.5.0;
   finding 1 checked on the Mac, and findings 2 and 3 settled; then CoffeePDF v1.0 (§13).
 
