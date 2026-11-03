@@ -220,6 +220,8 @@ public sealed class DocumentWindowSaveTests : IDisposable
         var note = Assert.Single(PdfAnnotations.Read(bytes, 0, EncryptedPdf.UserPassword));
         Assert.Equal(Author, note.Author);
         Assert.Throws<InvalidDataException>(() => PdfAnnotations.Read(bytes, 0));
+        // PdfBytes.Holds can't see into encrypted bytes: one save shows the password reached the full save.
+        Assert.Equal(1, PdfBytes.Saves(bytes));
     }
 
     private static T? Visible<T>(Window window, Func<T, bool> match) where T : Control =>

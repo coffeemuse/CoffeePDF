@@ -46,6 +46,7 @@ public sealed class PdfCompactionTests
         Assert.Equal(2, PdfBytes.Saves(stamped));
         Assert.Equal(1, PdfBytes.Saves(compacted));
         Assert.Equal(PdfAnnotations.Read(stamped, 0), PdfAnnotations.Read(compacted, 0));
+        Assert.Equal(2, PdfAnnotations.Read(compacted, 0).Count); // so the next line can't pass on an empty list
         Assert.All(PdfAnnotations.Read(compacted, 0), a => Assert.Equal(Author, a.Author));
         Assert.True(PdfBytes.Holds(compacted, "/SNC"));
     }
@@ -78,6 +79,8 @@ public sealed class PdfCompactionTests
 
         Assert.True(PdfBytes.Holds(pdf, Marker));
         Assert.False(PdfBytes.Holds(compacted, Marker));
+        // The field survives the full save: its widget is still on the page.
+        Assert.Equal(AnnotationSubtype.Widget, Assert.Single(PdfAnnotations.Read(compacted, 0)).Subtype);
     }
 
     [Fact]
@@ -117,7 +120,7 @@ public sealed class PdfCompactionTests
         var warnings = new List<string>();
 
         Assert.Same(pdf, PdfCompaction.Compact(pdf, null, warnings.Add));
-        Assert.Equal("A save had no full save: PDFium couldn't open it", Assert.Single(warnings));
+        Assert.Equal("A save had no full save: PDFium couldn't open it (error 4)", Assert.Single(warnings));
     }
 
     [Fact]
@@ -127,7 +130,7 @@ public sealed class PdfCompactionTests
         var warnings = new List<string>();
 
         Assert.Same(bytes, PdfCompaction.Compact(bytes, null, warnings.Add));
-        Assert.Single(warnings);
+        Assert.Equal("A save had no full save: PDFium couldn't open it (error 3)", Assert.Single(warnings));
     }
 
     /// <summary>The minimal PDF with another app's note on its page, and the leftover as object 7.</summary>

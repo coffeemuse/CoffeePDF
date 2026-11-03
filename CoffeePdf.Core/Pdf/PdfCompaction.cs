@@ -14,11 +14,13 @@ public static class PdfCompaction
     /// owner password.
     /// </summary>
     /// <remarks>
-    /// Returns <paramref name="pdf"/> itself for a signed PDF, told by a <c>/ByteRange</c> in its bytes, whose signature
-    /// a full save would break, so an undone markup may stay in the update a save appends to it: a known limit for v1
-    /// (owner, 2026-11-03). It does the same for bytes PDFium can't open or save, and tells <paramref name="warn"/>
-    /// why, without the file's contents. A save never fails for want of a full save, as it never does for want of an
-    /// author.
+    /// Returns <paramref name="pdf"/> itself for a signed PDF, told by a <c>/ByteRange</c> in its bytes: a full save
+    /// rewrites the signed bytes, which breaks the signature, so an undone markup may stay in the update a save appends
+    /// to it, a known limit for v1 (owner, 2026-11-03). The PdfViewer's own save already rewrites a PDF whose signature
+    /// field sits under a parent field, which breaks that signature, and such a PDF keeps what its save left too (spec
+    /// §16). It also returns <paramref name="pdf"/> for bytes PDFium can't open or save, and tells
+    /// <paramref name="warn"/> why, without the file's contents. A save never fails for want of a full save, as it
+    /// never does for want of an author.
     /// </remarks>
     public static byte[] Compact(byte[] pdf, string? password, Action<string>? warn = null)
     {
@@ -29,7 +31,10 @@ public static class PdfCompaction
         {
             using var document = PdfiumDocument.Open(pdf, password);
             if (document is null)
-                problem = "PDFium couldn't open it";
+            {
+                // Read at once, before another PDFium call replaces it: a wrong password reads differently from damage.
+                problem = $"PDFium couldn't open it (error {Pdfium.FPDF_GetLastError().Value})";
+            }
             else
             {
                 try
