@@ -21,10 +21,15 @@ internal static class EncryptedPdf
     private static readonly byte[] Padding = Convert.FromHexString("28BF4E5E4E758A4164004E56FFFA01082E2E00B6D0683E802F0CA9FE6453697A");
     private static readonly byte[] FileId = Convert.FromHexString("00112233445566778899AABBCCDDEEFF");
 
-    public static byte[] Build()
+    /// <summary>
+    /// The PDF, which opens with <paramref name="userPassword"/>: an empty one makes a PDF with only an owner password,
+    /// which opens without one. <paramref name="unusedObject"/>, when given, goes in as object 7, which nothing refers
+    /// to. It mustn't hold a string or a stream, since those would need encrypting.
+    /// </summary>
+    public static byte[] Build(string userPassword = UserPassword, string? unusedObject = null)
     {
-        var owner = OwnerEntry();
-        var key = FileKey(owner);
+        var owner = OwnerEntry(userPassword);
+        var key = FileKey(owner, userPassword);
         var user = UserEntry(key);
         var content = Rc4(ObjectKey(key, 4), "BT /F1 24 Tf 72 700 Td (CoffeePDF fixture) Tj ET"u8.ToArray());
         byte[][] objects =
@@ -37,6 +42,8 @@ internal static class EncryptedPdf
             // The encryption dictionary's own strings aren't encrypted.
             Ascii($"<< /Filter /Standard /V 2 /R 3 /Length 128 /P {Permissions} /O <{Convert.ToHexString(owner)}> /U <{Convert.ToHexString(user)}> >>"),
         ];
+        if (unusedObject is not null)
+            objects = [.. objects, Ascii(unusedObject)];
 
         using var pdf = new MemoryStream();
         pdf.Write(Ascii("%PDF-1.7\n"));
@@ -58,19 +65,19 @@ internal static class EncryptedPdf
     }
 
     /// <summary>Algorithm 3: /O, the user password's padding encrypted with a key from the owner password.</summary>
-    private static byte[] OwnerEntry()
+    private static byte[] OwnerEntry(string userPassword)
     {
         var hash = MD5.HashData(Pad(OwnerPassword));
         for (var i = 0; i < 50; i++)
             hash = MD5.HashData(hash);
-        return Rc4Rounds(hash, Pad(UserPassword));
+        return Rc4Rounds(hash, Pad(userPassword));
     }
 
     /// <summary>Algorithm 2: the file's key, from the user password, /O, the permissions and the file's ID.</summary>
-    private static byte[] FileKey(byte[] owner)
+    private static byte[] FileKey(byte[] owner, string userPassword)
     {
         var permissions = BitConverter.GetBytes(Permissions); // little-endian on every platform .NET runs these tests on
-        var hash = MD5.HashData([.. Pad(UserPassword), .. owner, .. permissions, .. FileId]);
+        var hash = MD5.HashData([.. Pad(userPassword), .. owner, .. permissions, .. FileId]);
         for (var i = 0; i < 50; i++)
             hash = MD5.HashData(hash);
         return hash;

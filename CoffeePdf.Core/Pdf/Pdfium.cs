@@ -22,6 +22,9 @@ internal static unsafe partial class Pdfium
     /// <summary><c>FPDF_INCREMENTAL</c>: a save that appends to the original bytes, so a signature over them holds.</summary>
     private const uint Incremental = 1;
 
+    /// <summary><c>FPDF_NO_INCREMENTAL</c>: a full save, writing only what the document uses (spec §6.4).</summary>
+    private const uint NoIncremental = 2;
+
     public static readonly Lock Gate = new();
 
     private static bool s_initialised;
@@ -85,14 +88,19 @@ internal static unsafe partial class Pdfium
     }
 
     /// <summary>Writes <paramref name="document"/> as an incremental update.</summary>
-    public static byte[] SaveIncremental(nint document)
+    public static byte[] SaveIncremental(nint document) => Save(document, Incremental);
+
+    /// <summary>Writes <paramref name="document"/> whole: one revision, holding only what it uses, with its encryption kept.</summary>
+    public static byte[] SaveFull(nint document) => Save(document, NoIncremental);
+
+    private static byte[] Save(nint document, uint flags)
     {
         using var output = new MemoryStream();
         var target = GCHandle.Alloc(output);
         try
         {
             var writer = new FileWrite { Version = 1, WriteBlock = &WriteBlock, Target = GCHandle.ToIntPtr(target) };
-            if (FPDF_SaveAsCopy(document, &writer, new CULong(Incremental)) == 0)
+            if (FPDF_SaveAsCopy(document, &writer, new CULong(flags)) == 0)
                 throw new IOException($"PDFium couldn't write the document (error {FPDF_GetLastError().Value})");
             return output.ToArray();
         }
@@ -145,6 +153,7 @@ internal static unsafe partial class Pdfium
     [LibraryImport(Library)] private static partial CULong FPDFAnnot_GetStringValue(nint annotation, byte* key, char* buffer, CULong length);
     [LibraryImport(Library)] private static partial int FPDFAnnot_SetStringValue(nint annotation, byte* key, char* value);
     [LibraryImport(Library)] private static partial int FPDFAnnot_GetRect(nint annotation, RectF* rect);
+    [LibraryImport(Library)] public static partial int FPDF_GetSignatureCount(nint document);
     [LibraryImport(Library)] private static partial int FPDF_SaveAsCopy(nint document, FileWrite* writer, CULong flags);
 }
 
@@ -219,6 +228,11 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     }
 
     public byte[] SaveIncremental() => Pdfium.SaveIncremental(Handle);
+
+    /// <summary>How many signatures the document holds: signature fields with a value (<c>FPDF_GetSignatureCount</c>).</summary>
+    public int SignatureCount => Pdfium.FPDF_GetSignatureCount(Handle);
+
+    public byte[] SaveFull() => Pdfium.SaveFull(Handle);
 
     public void Dispose()
     {
