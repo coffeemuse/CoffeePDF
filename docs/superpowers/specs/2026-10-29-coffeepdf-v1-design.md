@@ -228,7 +228,9 @@ With Healdan support off, a file in the Helper's `Copies/` folder opens read-onl
 - **What a save writes:** the PdfViewer saves to memory, `MarkupAuthor` writes the author (§7), and an unsigned PDF
   then gets a full save in CoffeePDF's own PDFium, so the file holds only what the document uses: no markup that was
   undone, and no drawing the PdfViewer replaced. A signed PDF keeps its incremental save, so an undone markup may stay
-  in the update a save appends to it, a known limit for v1. (owner, 2026-11-03; §16, finding 3's fix)
+  in the update a save appends to it, a known limit for v1 (owner, 2026-11-03). The PdfViewer's own save rewrites a PDF
+  whose signature field sits under a parent field, which breaks that signature, and such a PDF keeps its leftovers too
+  (final review, 2026-11-03; §16, finding 3's fix).
 
 Phase 0 found the temporary file and the rename (§16 row 2). The owner chose to have the Helper's watch handle them, rather than writing in place (§16 Decision 3).
 
@@ -840,10 +842,11 @@ what was planned. This is what the build showed, and what it changed. No owner's
   `accepted` and `source=Notarized Developer ID`.
 - **After the merges (2026-11-01).** §2.5 step 1 passed from the web page, once Healdan-Project/healdan#151 was merged
   and the owner's server upgraded, and Healdan Helper 0.5.0 was released (M3.6's plan, "Hands-on checks").
-- **Left before v1.0.** Finding 1 checked on the Mac, finding 2 settled, and the owner's checks of finding 3's fix
-  (below); then CoffeePDF v1.0 (§13).
+- **Left before v1.0.** Finding 1 checked on the Mac, finding 2 settled, the owner's checks of finding 3's fix
+  (below), and the owner's answer on the PdfViewer's save breaking a signature nested under a parent field (below);
+  then CoffeePDF v1.0 (§13).
 
-### Finding 3's fix: a full save for unsigned PDFs (designed 2026-11-03)
+### Finding 3's fix: a full save for unsigned PDFs (designed and built 2026-11-03)
 
 - **Why.** The PdfViewer's save writes every object it has made while the document is open, used or not, and a save
   doesn't reload the document. So a markup that's undone stays in the file, unseen, with its words in plain text, and
@@ -853,6 +856,8 @@ what was planned. This is what the build showed, and what it changed. No owner's
   - A signed PDF keeps its incremental save, since a full save would break the signature. An undone markup may stay
     in the update a save appends to it: a known limit for v1 (owner, 2026-11-03). Observed (probe, 2026-11-02): a
     note undone in the signed fixture stayed in the PdfViewer's update, in plain text, and the signature verified.
+    Observed (final review, 2026-11-03): the PdfViewer's own save rewrites a PDF whose signature field sits under a
+    parent field, which breaks that signature, and such a PDF keeps its leftovers too (the finding below).
   - A writer of CoffeePDF's own, rewriting only what follows the signed bytes and keeping only what's used, is in the
     roadmap's backlog.
 - **Approaches set aside (call).**
@@ -884,7 +889,7 @@ what was planned. This is what the build showed, and what it changed. No owner's
   - The Helper sees nothing new.
   - `MarkupAuthor` still tells new markups from the file it replaces, since the full save keeps `/NM`, `/T` and `/SNC`.
   - Files get smaller: #4 v1.1 would have been 17,515 bytes, not 32,952.
-  - Each save parses and writes the document once more. The build measures it on a large document.
+  - Each save parses and writes the document once more. The build times it on a file built in code (below).
   - CLAUDE.md's rule for saves gains the step.
 - **Testing, test-first (§8).**
   - The core (`PdfCompactionTests`), on fixtures built in code:
@@ -911,6 +916,26 @@ what was planned. This is what the build showed, and what it changed. No owner's
     90 and 136 ms, and each run wrote 175,524 bytes. The save presumably compressed the image (inferred: the output's
     filters weren't inspected). A real scan wasn't timed, so these times don't show what one takes.
   - Left: the owner's checks on the Mac.
+- **A finding for the owner: the PdfViewer's save breaks a signature nested under a parent field (final review,
+  2026-11-03).**
+  - Observed (a throwaway window test at b170a1c): the PDF was signed as `SignedPdf.cs` signs, but its signature
+    widget sat under a parent field with no `/FT`, as in a form with nested field names. Before the save the
+    signature verified. The reviewer added a note, undid it, added another and saved.
+    - The PdfViewer's save wasn't incremental: the saved file differs from the original from byte 8 on, and
+      `/ByteRange [0 914 17300 301]` no longer brackets its `/Contents` (byte 914 is `1`, not `<`). So the signature
+      is broken.
+    - The file holds two revisions, the PdfViewer's rewrite and `MarkupAuthor`'s update, and the undone note's words
+      are in it, since `PdfCompaction` saw the `/ByteRange` and left the file as it was.
+  - Inferred, not checked: the PdfViewer reads a form's signatures from its top-level fields only, as PDFium's
+    `FPDF_GetSignatureCount` does. A usage-rights signature (UR3, in `/Perms`, not a field) wasn't tried.
+  - It's the PdfViewer's own behaviour, and older than this fix: the branch doesn't change the PdfViewer's save, so
+    main's does the same (inferred: the test ran on the branch only). The build keeps its rule: a PDF with a
+    `/ByteRange` gets no full save.
+  - Left to the owner:
+    - What a save does when it would break a signature: say so, refuse, or save as now.
+    - Whether `PdfCompaction` tells an intact signature from a broken one, so a broken one gets the full save.
+  - It goes into the note for Avalonia, with the leftovers: the PdfViewer's docs say signed files are saved as
+    incremental updates, and the one tested with a nested signature field wasn't.
 
 ### The owner's to-do list, to fill the pending rows
 
