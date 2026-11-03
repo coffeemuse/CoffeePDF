@@ -15,7 +15,8 @@ namespace CoffeePdf.Windows;
 /// <remarks>
 /// <para>
 /// Every save goes through <see cref="SaveToAsync"/>. The PdfViewer saves to memory, <see cref="MarkupAuthor"/> writes
-/// the author into the markups made here, and <see cref="AtomicFile"/> renames the result over the file. The
+/// the author into the markups made here, <see cref="PdfCompaction"/> gives an unsigned PDF a full save, so the file
+/// holds only what the document uses, and <see cref="AtomicFile"/> renames the result over the file. The
 /// PdfViewer's own saving is off, so its toolbar and shortcuts can't save around that. Saves run one at a time: one
 /// that starts while another is writing waits, and then saves the document as it is by then, unless the window has
 /// closed or begun moving to a new copy meanwhile. A close, and a move, wait for a save still writing.
@@ -221,9 +222,9 @@ public partial class DocumentWindow : Window
 
     /// <summary>
     /// Writes the document to <paramref name="target"/> (spec §6.4), and the window then shows that file. The
-    /// author goes into the new markups, and the file is replaced whole. Returns whether it saved. With
-    /// <paramref name="asCopy"/>, it writes a copy for Healdan to file instead (§6.6): the window stays on its own
-    /// file, whose changes stay unsaved.
+    /// author goes into the new markups, an unsigned PDF keeps only what it uses, and the file is replaced whole.
+    /// Returns whether it saved. With <paramref name="asCopy"/>, it writes a copy for Healdan to file instead (§6.6):
+    /// the window stays on its own file, whose changes stay unsaved.
     /// </summary>
     internal async Task<bool> SaveToAsync(string target, bool asCopy = false)
     {
@@ -276,7 +277,10 @@ public partial class DocumentWindow : Window
             var author = App.Current.MarkupAuthor;
             var password = Viewer.Password ?? _typedPassword;
             var write = WriteFile;
-            await Task.Run(() => write(target, MarkupAuthor.Stamp(pdf, previous, pages, author, password)));
+            var log = Healdan.Log;
+            // An unsigned PDF keeps only what it uses (spec §6.4): the PdfViewer's save writes what was undone too.
+            await Task.Run(() => write(target,
+                PdfCompaction.Compact(MarkupAuthor.Stamp(pdf, previous, pages, author, password), password, log.Warn)));
             if (!asCopy)
             {
                 _path = Path.GetFullPath(target);
