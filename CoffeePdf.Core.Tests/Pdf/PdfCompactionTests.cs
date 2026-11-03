@@ -18,6 +18,9 @@ public sealed class PdfCompactionTests
 
     private const string Marker = "CoffeePdfLeftover";
 
+    /// <summary>A signature dictionary. Its <c>/ByteRange</c> is what tells a signed PDF; the bytes aren't a real signature's.</summary>
+    private const string Signature = "<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <00> >>";
+
     [Fact]
     public void An_object_nothing_uses_is_gone_and_the_page_is_the_same()
     {
@@ -54,6 +57,27 @@ public sealed class PdfCompactionTests
         var pdf = Signed();
 
         Assert.Same(pdf, PdfCompaction.Compact(pdf, null));
+    }
+
+    [Fact]
+    public void A_signed_field_under_a_parent_field_comes_back_as_it_was()
+    {
+        // PDFium's signature count reads only the form's top-level fields, so it misses a signature nested under a parent.
+        var pdf = SignedUnderParent();
+
+        Assert.Same(pdf, PdfCompaction.Compact(pdf, null));
+    }
+
+    [Fact]
+    public void A_pdf_with_an_empty_signature_field_gets_its_full_save()
+    {
+        // PDFium's signature count is 1 for a signature field with no value, which a form awaiting its signature has.
+        var pdf = WithEmptySignatureField();
+
+        var compacted = PdfCompaction.Compact(pdf, null);
+
+        Assert.True(PdfBytes.Holds(pdf, Marker));
+        Assert.False(PdfBytes.Holds(compacted, Marker));
     }
 
     [Fact]
@@ -115,14 +139,37 @@ public sealed class PdfCompactionTests
     }
 
     /// <summary>
-    /// The minimal PDF with a signature field whose value is a signature dictionary (objects 7 and 8), which PDFium
-    /// counts as a signature, and the leftover (9). The signature's bytes aren't real: the app's tests check a real one.
+    /// The minimal PDF with a signature field (7) whose value is a signature dictionary (8), which holds a
+    /// <c>/ByteRange</c>, and the leftover (9). The signature's bytes aren't real: the app's tests check a real one.
     /// </summary>
     private static byte[] Signed()
     {
         var objects = MinimalPdf.Objects(withForeignNote: false, extraAnnotations: ["7 0 R"], acroForm: "<< /Fields [7 0 R] /SigFlags 3 >>");
         objects.Add("<< /Type /Annot /Subtype /Widget /FT /Sig /T (Signature1) /Rect [0 0 0 0] /F 132 /P 3 0 R /V 8 0 R >>");
-        objects.Add("<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <00> >>");
+        objects.Add(Signature);
+        objects.Add(Leftover);
+        return MinimalPdf.Write(objects);
+    }
+
+    /// <summary>
+    /// The minimal PDF whose only top-level field (7) has no type, and has the signed widget (8, with its signature
+    /// dictionary, 9) as a kid. The leftover is 10.
+    /// </summary>
+    private static byte[] SignedUnderParent()
+    {
+        var objects = MinimalPdf.Objects(withForeignNote: false, extraAnnotations: ["8 0 R"], acroForm: "<< /Fields [7 0 R] /SigFlags 3 >>");
+        objects.Add("<< /T (Signatures) /Kids [8 0 R] >>");
+        objects.Add("<< /Type /Annot /Subtype /Widget /FT /Sig /T (Client) /Parent 7 0 R /Rect [0 0 0 0] /F 132 /P 3 0 R /V 9 0 R >>");
+        objects.Add(Signature);
+        objects.Add(Leftover);
+        return MinimalPdf.Write(objects);
+    }
+
+    /// <summary>The minimal PDF with a signature field (7) that has no value, and the leftover (8).</summary>
+    private static byte[] WithEmptySignatureField()
+    {
+        var objects = MinimalPdf.Objects(withForeignNote: false, extraAnnotations: ["7 0 R"], acroForm: "<< /Fields [7 0 R] >>");
+        objects.Add("<< /Type /Annot /Subtype /Widget /FT /Sig /T (Client) /Rect [0 0 0 0] /F 132 /P 3 0 R >>");
         objects.Add(Leftover);
         return MinimalPdf.Write(objects);
     }

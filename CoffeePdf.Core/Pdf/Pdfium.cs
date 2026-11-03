@@ -153,7 +153,6 @@ internal static unsafe partial class Pdfium
     [LibraryImport(Library)] private static partial CULong FPDFAnnot_GetStringValue(nint annotation, byte* key, char* buffer, CULong length);
     [LibraryImport(Library)] private static partial int FPDFAnnot_SetStringValue(nint annotation, byte* key, char* value);
     [LibraryImport(Library)] private static partial int FPDFAnnot_GetRect(nint annotation, RectF* rect);
-    [LibraryImport(Library)] public static partial int FPDF_GetSignatureCount(nint document);
     [LibraryImport(Library)] private static partial int FPDF_SaveAsCopy(nint document, FileWrite* writer, CULong flags);
 }
 
@@ -228,9 +227,6 @@ internal sealed unsafe class PdfiumDocument : IDisposable
     }
 
     public byte[] SaveIncremental() => Pdfium.SaveIncremental(Handle);
-
-    /// <summary>How many signatures the document holds: signature fields with a value (<c>FPDF_GetSignatureCount</c>).</summary>
-    public int SignatureCount => Pdfium.FPDF_GetSignatureCount(Handle);
 
     public byte[] SaveFull() => Pdfium.SaveFull(Handle);
 

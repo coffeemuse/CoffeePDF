@@ -864,7 +864,12 @@ what was planned. This is what the build showed, and what it changed. No owner's
 - **`PdfCompaction.Compact(pdf, password)`, in `CoffeePdf.Core/Pdf/` (call).**
   - It opens the bytes in `libcoffeepdfium`, under `Pdfium.Gate`, and returns PDFium's full save of them
     (`FPDF_SaveAsCopy` with `FPDF_NO_INCREMENTAL`): one revision, holding only what the document uses.
-  - A PDF with a signature (`FPDF_GetSignatureCount`) comes back as it was.
+  - A PDF holding a signature comes back as it was, told by a signature dictionary's `/ByteRange` in the file's
+    bytes. Every one has it, and it stays readable: the dictionary can't sit in a compressed object stream, since
+    the byte range must leave out its own `/Contents`, and names aren't encrypted.
+  - PDFium's `FPDF_GetSignatureCount` reads only the form's top-level fields: it counted no signature in a
+    signed field under a parent field, and one in an empty signature field (probe, 2026-11-03), so the build
+    doesn't use it (call).
   - An encrypted PDF opens with the save's password (`Viewer.Password`, or what was typed into the PdfViewer's
     prompt), and keeps its encryption and permissions. Observed (probe, 2026-11-02): from the fixture with an open
     password, the result still needed it, at security revision 3 with the same permissions, and kept both notes.
