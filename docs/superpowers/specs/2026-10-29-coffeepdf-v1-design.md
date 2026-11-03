@@ -840,7 +840,7 @@ what was planned. This is what the build showed, and what it changed. No owner's
   `accepted` and `source=Notarized Developer ID`.
 - **After the merges (2026-11-01).** §2.5 step 1 passed from the web page, once Healdan-Project/healdan#151 was merged
   and the owner's server upgraded, and Healdan Helper 0.5.0 was released (M3.6's plan, "Hands-on checks").
-- **Left before v1.0.** Finding 1 checked on the Mac, finding 2 settled, and finding 3's fix built and checked
+- **Left before v1.0.** Finding 1 checked on the Mac, finding 2 settled, and the owner's checks of finding 3's fix
   (below); then CoffeePDF v1.0 (§13).
 
 ### Finding 3's fix: a full save for unsigned PDFs (designed 2026-11-03)
@@ -891,12 +891,24 @@ what was planned. This is what the build showed, and what it changed. No owner's
     - an unused object carrying a marker word is gone, and the pages and annotations are the same;
     - saves stacked in a file come back as one revision;
     - a signed PDF comes back byte for byte;
+    - a signed field under a parent field comes back as it was;
+    - a PDF with an empty signature field gets its full save;
     - an encrypted one stays encrypted, with its permissions, and loses its unused object;
     - bytes PDFium can't open come back unchanged.
   - The app, with the PdfViewer: a note or a stamp undone before a save doesn't reach the file, and one undone after
     a save is gone at the next. The tests of the author and of signed and encrypted PDFs still pass.
   - The owner's checks on the Mac: undo a markup on a real document and save, then search the file; open it in
     Preview; and a save to Healdan and back.
+- **Built (2026-11-03).** `PdfCompaction.Compact` runs in every save (`DocumentWindow.SaveToAsync`).
+  - The tests: with the key, the core's 173 passed, and the app's 138 passed and 1 skipped (the keyless probe).
+    Without it, the core's 173 passed, and the app's 32 passed and 107 skipped. The app's counts were measured at
+    680b93f; the probe below is the only test added since, and it is in the core's.
+  - A PDF with only an owner password keeps its encryption through the full save (`PdfCompactionTests`).
+    - Observed (throwaway tool, 2026-11-03): a full save of an AES-128 PDF that macOS's Quartz had encrypted
+      (`/V 4 /R 4`, `/AESV2`) kept its AES encryption, its password and its permissions. AES-256 wasn't checked.
+  - The probe `How_long_a_full_save_of_a_large_pdf_takes`: 30,129,501 bytes and 500 pages took 134, 90 and 136 ms, and
+    each wrote 175,524 bytes.
+  - Left: the owner's checks on the Mac.
 
 ### The owner's to-do list, to fill the pending rows
 
