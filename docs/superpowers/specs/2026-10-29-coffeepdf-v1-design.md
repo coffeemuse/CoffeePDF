@@ -906,8 +906,10 @@ what was planned. This is what the build showed, and what it changed. No owner's
   - A PDF with only an owner password keeps its encryption through the full save (`PdfCompactionTests`).
     - Observed (throwaway tool, 2026-11-03): a full save of an AES-128 PDF that macOS's Quartz had encrypted
       (`/V 4 /R 4`, `/AESV2`) kept its AES encryption, its password and its permissions. AES-256 wasn't checked.
-  - The probe `How_long_a_full_save_of_a_large_pdf_takes`: 30,129,501 bytes and 500 pages took 134, 90 and 136 ms, and
-    each wrote 175,524 bytes.
+  - The probe `How_long_a_full_save_of_a_large_pdf_takes`, on a file built in code: 500 pages of text and one
+    uncompressed image of about 30 MB that is a single repeated byte. The full save of its 30,129,501 bytes took 134,
+    90 and 136 ms, and each run wrote 175,524 bytes. The save presumably compressed the image (inferred: the output's
+    filters weren't inspected). A real scan wasn't timed, so these times don't show what one takes.
   - Left: the owner's checks on the Mac.
 
 ### The owner's to-do list, to fill the pending rows
