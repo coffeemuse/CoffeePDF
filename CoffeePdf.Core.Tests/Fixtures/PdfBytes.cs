@@ -38,7 +38,7 @@ internal static class PdfBytes
     {
         yield return pdf;
         var text = Encoding.Latin1.GetString(pdf);
-        foreach (Match match in Regex.Matches(text, @"stream\r?\n"))
+        foreach (Match match in Regex.Matches(text, @"(?<!end)stream\r?\n"))
         {
             var start = match.Index + match.Length;
             var end = text.IndexOf("endstream", start, StringComparison.Ordinal);

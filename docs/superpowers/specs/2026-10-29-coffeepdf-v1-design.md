@@ -230,7 +230,8 @@ With Healdan support off, a file in the Helper's `Copies/` folder opens read-onl
   undone, and no drawing the PdfViewer replaced. A signed PDF keeps its incremental save, so an undone markup may stay
   in the update a save appends to it, a known limit for v1 (owner, 2026-11-03). The PdfViewer's own save rewrites a PDF
   whose signature field sits under a parent field, which breaks that signature, and such a PDF keeps its leftovers too
-  (final review, 2026-11-03; §16, finding 3's fix).
+  (final review, 2026-11-03; §16, finding 3's fix). An encrypted PDF with XMP metadata keeps its incremental save too,
+  since PDFium's full save would write the metadata unencrypted (code review, 2026-11-04).
 
 Phase 0 found the temporary file and the rename (§16 row 2). The owner chose to have the Helper's watch handle them, rather than writing in place (§16 Decision 3).
 
@@ -872,6 +873,10 @@ what was planned. This is what the build showed, and what it changed. No owner's
   - A PDF holding a signature comes back as it was, told by a signature dictionary's `/ByteRange` in the file's
     bytes. Every one has it, and it stays readable: the dictionary can't sit in a compressed object stream, since
     the byte range must leave out its own `/Contents`, and names aren't encrypted.
+    - It counts as written or with `#` escapes, followed by an array of four integers, outside any stream's data
+      (code review, 2026-11-04). So the name in a string, in a page's text or in an embedded file doesn't count.
+    - A signature cleared in a later revision still counts, since its bytes remain, and keeps the incremental save.
+    - `CoffeeLog` notes that a signed PDF had no full save.
   - PDFium's `FPDF_GetSignatureCount` reads only the form's top-level fields: it counted no signature in a
     signed field under a parent field, and one in an empty signature field (probe, 2026-11-03), so the build
     doesn't use it (call).
@@ -879,8 +884,14 @@ what was planned. This is what the build showed, and what it changed. No owner's
     prompt), and keeps its encryption and permissions. Observed (probe, 2026-11-02): from the fixture with an open
     password, the result still needed it, at security revision 3 with the same permissions, and kept both notes.
     A PDF with only an owner password is checked in the build.
-  - Bytes PDFium can't open or save come back as they were, and `CoffeeLog` notes it by the error, never the
-    contents. A save never fails for want of it, as for the author (§7).
+  - An encrypted PDF with XMP metadata comes back as it was, told by a `/Metadata` in its bytes: a metadata stream's
+    dictionary is never in an object stream, so the name is readable. Observed (code review, 2026-11-04): PDFium's
+    full save wrote the encrypted fixture's XMP in plain text. Its incremental save is kept, so an undone markup may
+    stay, as in a signed PDF.
+  - The full save of any other encrypted PDF is opened again with the password, and comes back as it was unless it
+    has the same security revision.
+  - Bytes PDFium can't open or save come back as they were, and `CoffeeLog` notes it by the error, or an exception
+    by its type, never the contents. A save never fails for want of it, as for the author (§7).
 - **Where it runs.** `DocumentWindow.SaveToAsync` writes `PdfCompaction.Compact(MarkupAuthor.Stamp(…), password)` in
   the write that already runs off the UI thread. So every save has it: ⌘S, Save As, Save as New Version's save, and
   the copy written for Healdan (§6.6). The file is still written once, through `AtomicFile` (Decision 3). The
@@ -899,6 +910,9 @@ what was planned. This is what the build showed, and what it changed. No owner's
     - a signed field under a parent field comes back as it was;
     - a PDF with an empty signature field gets its full save;
     - an encrypted one stays encrypted, with its permissions, and loses its unused object;
+    - an encrypted one with XMP metadata comes back as it was, and says why (code review, 2026-11-04);
+    - a signature with a `#`-escaped name comes back as it was, and one that only names `/ByteRange` in a string, or
+      holds a signature inside a stream's data, gets its full save (code review, 2026-11-04);
     - bytes PDFium can't open come back unchanged.
   - The app, with the PdfViewer: a note or a stamp undone before a save doesn't reach the file, and one undone after
     a save is gone at the next. The tests of the author and of signed and encrypted PDFs still pass.
@@ -916,6 +930,14 @@ what was planned. This is what the build showed, and what it changed. No owner's
     90 and 136 ms, and each run wrote 175,524 bytes. The save presumably compressed the image (inferred: the output's
     filters weren't inspected). A real scan wasn't timed, so these times don't show what one takes.
   - Left: the owner's checks on the Mac.
+- **Code review (2026-11-04).** The review's findings changed the build:
+  - the rules for encrypted PDFs with XMP metadata, for telling a signature, and for logging, above;
+  - a save lets go of the PdfViewer's buffer before the write, and the full save's buffer starts at the input's size;
+  - the app's tests of an undone markup also check that the kept note's words are found, so they can't pass on text
+    `PdfBytes` can't read;
+  - the probe runs only with `COFFEEPDF_PROBES` set (CLAUDE.md's command sets it). It took 97 ms.
+  - The tests, with the key: the core's 176 passed and 1 skipped (the probe), and the app's 138 passed and 1
+    skipped (the keyless probe).
 - **A finding for the owner: the PdfViewer's save breaks a signature nested under a parent field (final review,
   2026-11-03).**
   - Observed (a throwaway window test at b170a1c): the PDF was signed as `SignedPdf.cs` signs, but its signature

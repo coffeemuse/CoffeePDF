@@ -7,14 +7,15 @@ namespace CoffeePdf.Core.Tests.Pdf;
 
 /// <summary>
 /// Spec §16, finding 3's fix: how long the full save adds to a save of a large PDF, a question with no right answer to
-/// assert. Run with: dotnet test CoffeePdf.Core.Tests --filter Category=Probe --logger "console;verbosity=detailed"
+/// assert. It builds a 30 MB PDF, so it runs only when asked. Run with: COFFEEPDF_PROBES=1 dotnet test
+/// CoffeePdf.Core.Tests --filter Category=Probe --logger "console;verbosity=detailed"
 /// </summary>
 [Trait("Category", "Probe")]
 public sealed class PdfCompactionProbe(ITestOutputHelper output)
 {
     private const int Pages = 500;
 
-    [Fact]
+    [HeavyProbeFact]
     public void How_long_a_full_save_of_a_large_pdf_takes()
     {
         var pdf = Large(imageBytes: 30_000_000);

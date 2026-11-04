@@ -24,17 +24,19 @@ internal static class EncryptedPdf
     /// <summary>
     /// The PDF, which opens with <paramref name="userPassword"/>: an empty one makes a PDF with only an owner password,
     /// which opens without one. <paramref name="unusedObject"/>, when given, goes in as object 7, which nothing refers
-    /// to. It mustn't hold a string or a stream, since those would need encrypting.
+    /// to. It mustn't hold a string or a stream, since those would need encrypting. <paramref name="metadata"/>, when
+    /// given, is the catalog's XMP metadata stream, encrypted, after the unused object.
     /// </summary>
-    public static byte[] Build(string userPassword = UserPassword, string? unusedObject = null)
+    public static byte[] Build(string userPassword = UserPassword, string? unusedObject = null, string? metadata = null)
     {
         var owner = OwnerEntry(userPassword);
         var key = FileKey(owner, userPassword);
         var user = UserEntry(key);
         var content = Rc4(ObjectKey(key, 4), "BT /F1 24 Tf 72 700 Td (CoffeePDF fixture) Tj ET"u8.ToArray());
+        var metadataNumber = unusedObject is null ? 7 : 8;
         byte[][] objects =
         [
-            Ascii("<< /Type /Catalog /Pages 2 0 R >>"),
+            Ascii(metadata is null ? "<< /Type /Catalog /Pages 2 0 R >>" : $"<< /Type /Catalog /Pages 2 0 R /Metadata {metadataNumber} 0 R >>"),
             Ascii("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             Ascii("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
             [.. Ascii($"<< /Length {content.Length} >>\nstream\n"), .. content, .. Ascii("\nendstream")],
@@ -44,6 +46,11 @@ internal static class EncryptedPdf
         ];
         if (unusedObject is not null)
             objects = [.. objects, Ascii(unusedObject)];
+        if (metadata is not null)
+        {
+            var xmp = Rc4(ObjectKey(key, metadataNumber), Encoding.UTF8.GetBytes(metadata));
+            objects = [.. objects, [.. Ascii($"<< /Type /Metadata /Subtype /XML /Length {xmp.Length} >>\nstream\n"), .. xmp, .. Ascii("\nendstream")]];
+        }
 
         using var pdf = new MemoryStream();
         pdf.Write(Ascii("%PDF-1.7\n"));

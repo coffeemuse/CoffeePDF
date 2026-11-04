@@ -21,7 +21,7 @@ You need the .NET 10 SDK (`global.json` pins it). The PdfViewer needs the Avalon
 
 ```bash
 dotnet test CoffeePdf.sln                                    # everything; the PdfViewer's tests skip without the key
-dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find
+COFFEEPDF_PROBES=1 dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find; the variable runs the heavy ones
 dotnet run --project CoffeePdf -- <file.pdf>                 # the app
 packaging/mac/package.sh 1.2.3                               # CoffeePDF.app and its .dmg, on a Mac
 packaging/mac/make-icon.sh                                   # CoffeePDF.icns from packaging/icon/CoffeePDF.png; commit it

@@ -18,6 +18,12 @@ public sealed class PdfCompactionTests
 
     private const string Marker = "CoffeePdfLeftover";
 
+    /// <summary>An XMP packet, whose title is its marker.</summary>
+    private const string Xmp = "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\">" +
+        "<dc:title xmlns:dc=\"http://purl.org/dc/elements/1.1/\">CoffeePdfMetadata</dc:title></x:xmpmeta><?xpacket end=\"w\"?>";
+
+    private const string XmpMarker = "CoffeePdfMetadata";
+
     /// <summary>A signature dictionary. Its <c>/ByteRange</c> is what tells a signed PDF; the bytes aren't a real signature's.</summary>
     private const string Signature = "<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <00> >>";
 
@@ -56,8 +62,36 @@ public sealed class PdfCompactionTests
     {
         // A full save would break the signature, so a signed PDF keeps its incremental save (owner, 2026-11-03).
         var pdf = Signed();
+        var warnings = new List<string>();
+
+        Assert.Same(pdf, PdfCompaction.Compact(pdf, null, warnings.Add));
+        Assert.Equal("A save had no full save: the PDF holds a signature", Assert.Single(warnings));
+    }
+
+    [Fact]
+    public void A_signature_whose_name_is_escaped_comes_back_as_it_was()
+    {
+        // #52 is R: the same name, written another way.
+        var pdf = Signed(Signature.Replace("/ByteRange", "/Byte#52ange", StringComparison.Ordinal));
 
         Assert.Same(pdf, PdfCompaction.Compact(pdf, null));
+    }
+
+    [Fact]
+    public void A_pdf_that_only_names_ByteRange_in_a_string_gets_its_full_save()
+    {
+        var pdf = WithLeftover("<< /Type /CoffeePdfLeftover /Note (see /ByteRange) >>");
+
+        Assert.False(PdfBytes.Holds(PdfCompaction.Compact(pdf, null), Marker));
+    }
+
+    [Fact]
+    public void A_signature_inside_a_streams_data_gets_its_full_save()
+    {
+        // As an embedded file that is a signed PDF holds one: it signs that file, not this one.
+        var pdf = WithLeftover($"<< /Type /CoffeePdfLeftover /Length {Signature.Length} >>\nstream\n{Signature}\nendstream");
+
+        Assert.False(PdfBytes.Holds(PdfCompaction.Compact(pdf, null), Marker));
     }
 
     [Fact]
@@ -114,6 +148,19 @@ public sealed class PdfCompactionTests
     }
 
     [Fact]
+    public void An_encrypted_pdf_with_xmp_metadata_comes_back_as_it_was_and_says_why()
+    {
+        // PDFium's full save writes a metadata stream unencrypted, which would put its XMP in plain text.
+        var pdf = EncryptedPdf.Build(metadata: Xmp);
+        var warnings = new List<string>();
+
+        Assert.False(PdfBytes.Holds(pdf, XmpMarker));
+        Assert.Same(pdf, PdfCompaction.Compact(pdf, EncryptedPdf.UserPassword, warnings.Add));
+        Assert.Equal("A save had no full save: PDFium's would leave the encrypted PDF's XMP metadata unencrypted",
+            Assert.Single(warnings));
+    }
+
+    [Fact]
     public void An_encrypted_pdf_without_its_password_comes_back_as_it_was_and_says_why()
     {
         var pdf = EncryptedPdf.Build();
@@ -133,11 +180,11 @@ public sealed class PdfCompactionTests
         Assert.Equal("A save had no full save: PDFium couldn't open it (error 3)", Assert.Single(warnings));
     }
 
-    /// <summary>The minimal PDF with another app's note on its page, and the leftover as object 7.</summary>
-    private static byte[] WithLeftover()
+    /// <summary>The minimal PDF with another app's note on its page, and <paramref name="leftover"/> as object 7.</summary>
+    private static byte[] WithLeftover(string leftover = Leftover)
     {
         var objects = MinimalPdf.Objects(withForeignNote: true, extraAnnotations: [], acroForm: null);
-        objects.Add(Leftover);
+        objects.Add(leftover);
         return MinimalPdf.Write(objects);
     }
 
@@ -145,11 +192,11 @@ public sealed class PdfCompactionTests
     /// The minimal PDF with a signature field (7) whose value is a signature dictionary (8), which holds a
     /// <c>/ByteRange</c>, and the leftover (9). The signature's bytes aren't real: the app's tests check a real one.
     /// </summary>
-    private static byte[] Signed()
+    private static byte[] Signed(string signature = Signature)
     {
         var objects = MinimalPdf.Objects(withForeignNote: false, extraAnnotations: ["7 0 R"], acroForm: "<< /Fields [7 0 R] /SigFlags 3 >>");
         objects.Add("<< /Type /Annot /Subtype /Widget /FT /Sig /T (Signature1) /Rect [0 0 0 0] /F 132 /P 3 0 R /V 8 0 R >>");
-        objects.Add(Signature);
+        objects.Add(signature);
         objects.Add(Leftover);
         return MinimalPdf.Write(objects);
     }

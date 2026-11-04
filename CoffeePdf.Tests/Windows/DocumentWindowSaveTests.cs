@@ -81,6 +81,7 @@ public sealed class DocumentWindowSaveTests : IDisposable
         Assert.True(saved);
         Assert.Empty(errors);
         var bytes = File.ReadAllBytes(path);
+        Assert.True(PdfBytes.Holds(bytes, "Kept")); // so the next line can't pass on text PdfBytes can't read
         Assert.False(PdfBytes.Holds(bytes, "Withdrawn remark"));
         Assert.Equal(Author, Assert.Single(PdfAnnotations.Read(bytes, 0)).Author);
     }
@@ -104,6 +105,7 @@ public sealed class DocumentWindowSaveTests : IDisposable
         Assert.True(saved);
         Assert.Empty(errors);
         var bytes = File.ReadAllBytes(path);
+        Assert.True(PdfBytes.Holds(bytes, "Kept")); // so the next line can't pass on text PdfBytes can't read
         Assert.False(PdfBytes.Holds(bytes, "Withdrawn remark"));
         Assert.Equal(Author, Assert.Single(PdfAnnotations.Read(bytes, 0)).Author);
     }
@@ -126,6 +128,7 @@ public sealed class DocumentWindowSaveTests : IDisposable
         Assert.True(saved);
         Assert.Empty(errors);
         var bytes = File.ReadAllBytes(path);
+        Assert.True(PdfBytes.Holds(bytes, "Kept")); // so the next line can't pass on text PdfBytes can't read
         Assert.False(PdfBytes.Holds(bytes, "Withdrawn stamp"));
         Assert.Single(PdfAnnotations.Read(bytes, 0));
     }

@@ -90,18 +90,22 @@ internal static unsafe partial class Pdfium
     /// <summary>Writes <paramref name="document"/> as an incremental update.</summary>
     public static byte[] SaveIncremental(nint document) => Save(document, Incremental);
 
-    /// <summary>Writes <paramref name="document"/> whole: one revision, holding only what it uses, with its encryption kept.</summary>
-    public static byte[] SaveFull(nint document) => Save(document, NoIncremental);
+    /// <summary>
+    /// Writes <paramref name="document"/> whole: one revision, holding only what it uses, with its encryption kept.
+    /// <paramref name="capacity"/>, the size it was opened from, sizes the buffer, so it seldom grows.
+    /// </summary>
+    public static byte[] SaveFull(nint document, int capacity) => Save(document, NoIncremental, capacity);
 
-    private static byte[] Save(nint document, uint flags)
+    private static byte[] Save(nint document, uint flags, int capacity = 0)
     {
-        using var output = new MemoryStream();
+        using var output = new MemoryStream(capacity);
         var target = GCHandle.Alloc(output);
         try
         {
             var writer = new FileWrite { Version = 1, WriteBlock = &WriteBlock, Target = GCHandle.ToIntPtr(target) };
+            // FPDF_SaveAsCopy sets no error of its own, so FPDF_GetLastError would name an earlier call's.
             if (FPDF_SaveAsCopy(document, &writer, new CULong(flags)) == 0)
-                throw new IOException($"PDFium couldn't write the document (error {FPDF_GetLastError().Value})");
+                throw new IOException("PDFium couldn't write the document");
             return output.ToArray();
         }
         finally
@@ -143,6 +147,7 @@ internal static unsafe partial class Pdfium
     [LibraryImport(Library)] public static partial void FPDF_CloseDocument(nint document);
     [LibraryImport(Library)] public static partial CULong FPDF_GetLastError();
     [LibraryImport(Library)] public static partial int FPDF_GetPageCount(nint document);
+    [LibraryImport(Library)] public static partial int FPDF_GetSecurityHandlerRevision(nint document);
     [LibraryImport(Library)] public static partial nint FPDF_LoadPage(nint document, int index);
     [LibraryImport(Library)] public static partial void FPDF_ClosePage(nint page);
     [LibraryImport(Library)] public static partial int FPDFPage_GetAnnotCount(nint page);
@@ -160,11 +165,13 @@ internal static unsafe partial class Pdfium
 internal sealed unsafe class PdfiumDocument : IDisposable
 {
     private GCHandle _pin;
+    private readonly int _size;
 
-    private PdfiumDocument(nint handle, GCHandle pin)
+    private PdfiumDocument(nint handle, GCHandle pin, int size)
     {
         Handle = handle;
         _pin = pin;
+        _size = size;
     }
 
     public nint Handle { get; }
@@ -180,7 +187,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         fixed (byte* p = Pdfium.Utf8(password))
             handle = Pdfium.FPDF_LoadMemDocument64((void*)pin.AddrOfPinnedObject(), (nuint)pdf.Length, p);
         if (handle != 0)
-            return new PdfiumDocument(handle, pin);
+            return new PdfiumDocument(handle, pin, pdf.Length);
         pin.Free();
         return null;
     }
@@ -193,7 +200,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
         fixed (byte* f = Pdfium.Utf8(path))
         fixed (byte* p = Pdfium.Utf8(password))
             handle = Pdfium.FPDF_LoadDocument(f, p);
-        return handle == 0 ? null : new PdfiumDocument(handle, default);
+        return handle == 0 ? null : new PdfiumDocument(handle, default, 0);
     }
 
     /// <summary>Calls <paramref name="visit"/> with each annotation on page <paramref name="pageIndex"/>, which is open meanwhile.</summary>
@@ -228,7 +235,7 @@ internal sealed unsafe class PdfiumDocument : IDisposable
 
     public byte[] SaveIncremental() => Pdfium.SaveIncremental(Handle);
 
-    public byte[] SaveFull() => Pdfium.SaveFull(Handle);
+    public byte[] SaveFull() => Pdfium.SaveFull(Handle, _size);
 
     public void Dispose()
     {

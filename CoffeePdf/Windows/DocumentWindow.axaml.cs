@@ -263,7 +263,7 @@ public partial class DocumentWindow : Window
             // Whether the window's own file lacks changes, read before the snapshot clears IsDirty: a copy written for
             // Healdan leaves them unsaved there.
             var unsaved = Viewer.IsDirty || _editedSinceSave || _saveFailed || _writtenForHealdan;
-            using var memory = new MemoryStream();
+            var memory = new MemoryStream(); // holds nothing to dispose, and is let go below
             await Viewer.SaveDocumentAsync(memory);
             // From the snapshot on, an undo is a change this save doesn't hold, so it's recorded even while the file is
             // still being written.
@@ -272,6 +272,7 @@ public partial class DocumentWindow : Window
             if (asCopy)
                 _writtenForHealdan = unsaved;
             var pdf = memory.ToArray();
+            memory = null; // the PdfViewer's buffer goes before the write, which makes copies of the document of its own
             previous = _path;
             int[] pages = [.. _markedPages];
             var author = App.Current.MarkupAuthor;
