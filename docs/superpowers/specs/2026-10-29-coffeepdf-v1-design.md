@@ -126,7 +126,7 @@ It uses .NET 10, Avalonia 12.1 (matching the Helper), and `Avalonia.Controls.Pdf
   - `Documents/`: a window's mode (§6.1), its title, which commands are enabled, and the save-follow loop (§6.4).
   - `Files/`: `PdfFile`, which tells a PDF by its header, and `AtomicFile`, which writes a file whole through a temporary file renamed over it (§16 row 2).
   - `Locks/`: the lock file beside an editable copy (§6.8).
-  - `Pdf/`: CoffeePDF's own PDFium (§16 Decision 1): the markup author (§7), written into the annotations made in CoffeePDF.
+  - `Pdf/`: CoffeePDF's own PDFium (§16 Decision 1): the markup author (§7), written into the annotations made in CoffeePDF, and the full save of an unsigned PDF (§6.4).
   - `Settings/`: the preferences (§5) and Open Recent.
 - **`CoffeePdf/`** is the Avalonia app:
   - document windows hosting the PdfViewer;
@@ -225,6 +225,13 @@ With Healdan support off, a file in the Helper's `Copies/` folder opens read-onl
   - CoffeePDF asks again after 2, 5 and 15 seconds, then 30, then every 60, as the LibreOffice extension does. It keeps asking the same way while the Helper can't be reached.
   - Following ends when the window closes, when a newer save takes over, when the file is saved elsewhere, or when the Helper answers with an error.
 - **The PdfViewer's AutoSave stays off,** because each edit would otherwise become a snapshot. (call)
+- **What a save writes:** the PdfViewer saves to memory, `MarkupAuthor` writes the author (§7), and an unsigned PDF
+  then gets a full save in CoffeePDF's own PDFium, so the file holds only what the document uses: no markup that was
+  undone, and no drawing the PdfViewer replaced. A signed PDF keeps its incremental save, so an undone markup may stay
+  in the update a save appends to it, a known limit for v1 (owner, 2026-11-03). The PdfViewer's own save rewrites a PDF
+  whose signature field sits under a parent field, which breaks that signature, and such a PDF keeps its leftovers too
+  (final review, 2026-11-03; §16, finding 3's fix). An encrypted PDF with XMP metadata keeps its incremental save too,
+  since PDFium's full save would write the metadata unencrypted (code review, 2026-11-04).
 
 Phase 0 found the temporary file and the rename (§16 row 2). The owner chose to have the Helper's watch handle them, rather than writing in place (§16 Decision 3).
 
@@ -788,6 +795,43 @@ what was planned. This is what the build showed, and what it changed. No owner's
   3. *A full rewrite.* The checked-out PDF went from 204,021 bytes to 39,504 at CoffeePDF's first save. The PdfViewer
      rewrites an unsigned PDF whole (§16 row 1), which can drop unused objects and earlier revisions. Not yet shown:
      that nothing the owner can see was lost. Compare that document's version before the save with the one after.
+     - **Settled (2026-11-02): nothing was lost.** A throwaway probe, not committed, compared #4 v1.0 with v1.1, both
+       downloaded from Healdan. It read them in PDFium 157 (CoffeePDF's engine and the PdfViewer's), in PDFKit
+       (Preview's), and object by object in the files themselves, and printed counts and matches, not the document's
+       text. Healdan's v1.1 is 32,952 bytes, not the 39,504 above, which wasn't traced.
+     - *What changed.* Only the step's own markup. Drawn without annotations, the page matches pixel for pixel in both
+       engines, and so do its text, size and rotation. The two form fields keep their values, and the note already
+       there is kept. With annotations drawn, every pixel that differs (2,710 in PDFium) is inside the two new markups,
+       a text box and a rectangle, which carry the Markup author. There were no bookmarks, links, attachments,
+       signatures or tags to lose, and the catalog, the form and the page have the same keys as before.
+     - *Where the bytes went.* 180,464 of v1.0's bytes (88%) were objects nothing in the document uses: 89 fonts, 75
+       form XObjects and colour profiles, left by whatever made the form. The cross-reference listed them, but no page
+       used them, and PDFium's full save writes only what the document uses: its own full save of v1.0 is 15,989 bytes.
+       v1.1 also stores the fields' appearances, which v1.0 left to `NeedAppearances`, and they draw the same. One font
+       is compressed differently, with the same contents.
+     - *What v1.1 holds: three saves.* The PdfViewer's full rewrite, which wrote the new markups as stamps; an update
+       of its own in the same save, which makes them a text box and a rectangle; and `MarkupAuthor`'s update, which
+       writes their author. PDFium writes again the page, fields and note that update loaded (2,306 bytes superseded).
+     - *A finding for the owner: the PdfViewer's save keeps the drawings it replaced.* v1.1 holds 21 appearance
+       drawings and 21 fonts (11,589 bytes) that nothing uses, which the PdfViewer made while the document was open:
+       15 of the note's pop-up and 6 of the text box. Each shows only text the document already holds. Not shown:
+       whether a markup's earlier words, after an edit, or a deleted markup stay in the file the same way, unseen but
+       readable by any tool. PDFium's own full save of v1.1 drops them (17,515 bytes, with every page, annotation and
+       drawing the same), so CoffeePDF's save of an unsigned PDF could too.
+     - **Checked (2026-11-02): a markup that's undone stays in the file.** A throwaway headless probe, not committed,
+       saved through `DocumentWindow.SaveToAsync`, gave each case's note or stamp a marker word, and searched the saved
+       file for it.
+       - Undone, it stays, unused, with its words in plain text: a note undone before a save, a note undone after one
+         (the next save keeps it, since a save doesn't reload the PdfViewer's document), and a stamp, whose drawing
+         keeps its label too.
+       - A note's earlier words don't stay, whether it was edited before a save, after one or in a later session, or
+         was another app's. Only the new words are in the file.
+       - Not shown: a markup deleted rather than undone. The PdfViewer deletes through its own selection, which the
+         headless probe couldn't drive, so a markup that was in the file when it opened and is then deleted is
+         untested.
+       - PDFium's own full save of each file with an undone markup drops it, and leaves the page, its annotations, their
+         drawings and their author the same.
+       - A signed PDF is saved incrementally, so whatever its signed revision holds stays in the file by design.
 - **Phase 2's list for Phase 3, settled.** `IsAppFile` knows the lock (§4.4 item 1). `"path": null` in `/v1/save-new`
   works (M3.6 §6.2), and step 6 filed a local PDF, which sends `"replaces": null`. The Helper tracks CoffeePDF's copies
   (§4.4 item 11). Step 7 checked the menu bar on the Mac. Still open: a hand check of ⌘S then ⌘W on a large copy.
@@ -797,8 +841,123 @@ what was planned. This is what the build showed, and what it changed. No owner's
   attached `CoffeePDF-0.3.0.dmg`, 47,505,143 bytes, to the release. The owner downloaded it in Safari, so macOS
   quarantined it, and installed it in Applications. Gatekeeper passed (`docs/RELEASING.md`), and `spctl -a -vv` gave
   `accepted` and `source=Notarized Developer ID`.
-- **Left before v1.0.** §2.5 step 1 from the web page, once the owner's server is upgraded; Healdan Helper 0.5.0;
-  finding 1 checked on the Mac, and findings 2 and 3 settled; then CoffeePDF v1.0 (§13).
+- **After the merges (2026-11-01).** §2.5 step 1 passed from the web page, once Healdan-Project/healdan#151 was merged
+  and the owner's server upgraded, and Healdan Helper 0.5.0 was released (M3.6's plan, "Hands-on checks").
+- **Left before v1.0.** Finding 1 checked on the Mac, finding 2 settled, the owner's checks of finding 3's fix
+  (below), and the owner's answer on the PdfViewer's save breaking a signature nested under a parent field (below);
+  then CoffeePDF v1.0 (§13).
+
+### Finding 3's fix: a full save for unsigned PDFs (designed and built 2026-11-03)
+
+- **Why.** The PdfViewer's save writes every object it has made while the document is open, used or not, and a save
+  doesn't reload the document. So a markup that's undone stays in the file, unseen, with its words in plain text, and
+  so do the drawings the PdfViewer replaced (Phase 3, finding 3). PDFium's own full save writes only what the document
+  uses. It dropped every leftover the probes found, and left the pages, annotations, drawings and author the same.
+- **Decision (owner, 2026-11-03).** Every save of an unsigned PDF ends with a full save in CoffeePDF's own PDFium.
+  - A signed PDF keeps its incremental save, since a full save would break the signature. An undone markup may stay
+    in the update a save appends to it: a known limit for v1 (owner, 2026-11-03). Observed (probe, 2026-11-02): a
+    note undone in the signed fixture stayed in the PdfViewer's update, in plain text, and the signature verified.
+    Observed (final review, 2026-11-03): the PdfViewer's own save rewrites a PDF whose signature field sits under a
+    parent field, which breaks that signature, and such a PDF keeps its leftovers too (the finding below).
+  - A writer of CoffeePDF's own, rewriting only what follows the signed bytes and keeping only what's used, is in the
+    roadmap's backlog.
+- **Approaches set aside (call).**
+  - Folding the full save into `MarkupAuthor`. It would save a parse, but change its contract (an incremental update,
+    and the same bytes back when there's nothing to write) and give it two jobs.
+  - Stopping the PdfViewer from keeping leftovers. Reloading after a save doesn't help the first one, and loses the
+    undo history. The owner asks Avalonia, under the Pro licence, for a save that writes only what the document uses.
+    When a PdfViewer has one, CoffeePDF drops its step (Decision 1's pattern).
+- **`PdfCompaction.Compact(pdf, password)`, in `CoffeePdf.Core/Pdf/` (call).**
+  - It opens the bytes in `libcoffeepdfium`, under `Pdfium.Gate`, and returns PDFium's full save of them
+    (`FPDF_SaveAsCopy` with `FPDF_NO_INCREMENTAL`): one revision, holding only what the document uses.
+  - A PDF holding a signature comes back as it was, told by a signature dictionary's `/ByteRange` in the file's
+    bytes. Every one has it, and it stays readable: the dictionary can't sit in a compressed object stream, since
+    the byte range must leave out its own `/Contents`, and names aren't encrypted.
+    - It counts as written or with `#` escapes, followed by an array of four integers, outside any stream's data
+      (code review, 2026-11-04). So the name in a string, in a page's text or in an embedded file doesn't count.
+    - A signature cleared in a later revision still counts, since its bytes remain, and keeps the incremental save.
+    - `CoffeeLog` notes that a signed PDF had no full save.
+  - PDFium's `FPDF_GetSignatureCount` reads only the form's top-level fields: it counted no signature in a
+    signed field under a parent field, and one in an empty signature field (probe, 2026-11-03), so the build
+    doesn't use it (call).
+  - An encrypted PDF opens with the save's password (`Viewer.Password`, or what was typed into the PdfViewer's
+    prompt), and keeps its encryption and permissions. Observed (probe, 2026-11-02): from the fixture with an open
+    password, the result still needed it, at security revision 3 with the same permissions, and kept both notes.
+    A PDF with only an owner password is checked in the build.
+  - An encrypted PDF with XMP metadata comes back as it was, told by a `/Metadata` in its bytes: a metadata stream's
+    dictionary is never in an object stream, so the name is readable. Observed (code review, 2026-11-04): PDFium's
+    full save wrote the encrypted fixture's XMP in plain text. Its incremental save is kept, so an undone markup may
+    stay, as in a signed PDF.
+  - The full save of any other encrypted PDF is opened again with the password, and comes back as it was unless it
+    has the same security revision.
+  - Bytes PDFium can't open or save come back as they were, and `CoffeeLog` notes it by the error, or an exception
+    by its type, never the contents. A save never fails for want of it, as for the author (§7).
+- **Where it runs.** `DocumentWindow.SaveToAsync` writes `PdfCompaction.Compact(MarkupAuthor.Stamp(…), password)` in
+  the write that already runs off the UI thread. So every save has it: ⌘S, Save As, Save as New Version's save, and
+  the copy written for Healdan (§6.6). The file is still written once, through `AtomicFile` (Decision 3). The
+  PdfViewer's own copy of the document keeps its leftovers, which no longer reach the file.
+- **What follows.**
+  - The Helper sees nothing new.
+  - `MarkupAuthor` still tells new markups from the file it replaces, since the full save keeps `/NM`, `/T` and `/SNC`.
+  - Files get smaller: #4 v1.1 would have been 17,515 bytes, not 32,952.
+  - Each save parses and writes the document once more. The build times it on a file built in code (below).
+  - CLAUDE.md's rule for saves gains the step.
+- **Testing, test-first (§8).**
+  - The core (`PdfCompactionTests`), on fixtures built in code:
+    - an unused object carrying a marker word is gone, and the pages and annotations are the same;
+    - saves stacked in a file come back as one revision;
+    - a signed PDF comes back byte for byte;
+    - a signed field under a parent field comes back as it was;
+    - a PDF with an empty signature field gets its full save;
+    - an encrypted one stays encrypted, with its permissions, and loses its unused object;
+    - an encrypted one with XMP metadata comes back as it was, and says why (code review, 2026-11-04);
+    - a signature with a `#`-escaped name comes back as it was, and one that only names `/ByteRange` in a string, or
+      holds a signature inside a stream's data, gets its full save (code review, 2026-11-04);
+    - bytes PDFium can't open come back unchanged.
+  - The app, with the PdfViewer: a note or a stamp undone before a save doesn't reach the file, and one undone after
+    a save is gone at the next. The tests of the author and of signed and encrypted PDFs still pass.
+  - The owner's checks on the Mac: undo a markup on a real document and save, then search the file; open it in
+    Preview; and a save to Healdan and back.
+- **Built (2026-11-03).** `PdfCompaction.Compact` runs in every save (`DocumentWindow.SaveToAsync`).
+  - The tests: with the key, the core's 173 passed, and the app's 138 passed and 1 skipped (the keyless probe).
+    Without it, the core's 173 passed, and the app's 32 passed and 107 skipped. The app's counts were measured at
+    680b93f; the probe below is the only test added since, and it is in the core's.
+  - A PDF with only an owner password keeps its encryption through the full save (`PdfCompactionTests`).
+    - Observed (throwaway tool, 2026-11-03): a full save of an AES-128 PDF that macOS's Quartz had encrypted
+      (`/V 4 /R 4`, `/AESV2`) kept its AES encryption, its password and its permissions. AES-256 wasn't checked.
+  - The probe `How_long_a_full_save_of_a_large_pdf_takes`, on a file built in code: 500 pages of text and one
+    uncompressed image of about 30 MB that is a single repeated byte. The full save of its 30,129,501 bytes took 134,
+    90 and 136 ms, and each run wrote 175,524 bytes. The save presumably compressed the image (inferred: the output's
+    filters weren't inspected). A real scan wasn't timed, so these times don't show what one takes.
+  - Left: the owner's checks on the Mac.
+- **Code review (2026-11-04).** The review's findings changed the build:
+  - the rules for encrypted PDFs with XMP metadata, for telling a signature, and for logging, above;
+  - a save lets go of the PdfViewer's buffer before the write, and the full save's buffer starts at the input's size;
+  - the app's tests of an undone markup also check that the kept note's words are found, so they can't pass on text
+    `PdfBytes` can't read;
+  - the probe runs only with `COFFEEPDF_PROBES` set (CLAUDE.md's command sets it). It took 97 ms.
+  - The tests, with the key: the core's 176 passed and 1 skipped (the probe), and the app's 138 passed and 1
+    skipped (the keyless probe).
+- **A finding for the owner: the PdfViewer's save breaks a signature nested under a parent field (final review,
+  2026-11-03).**
+  - Observed (a throwaway window test at b170a1c): the PDF was signed as `SignedPdf.cs` signs, but its signature
+    widget sat under a parent field with no `/FT`, as in a form with nested field names. Before the save the
+    signature verified. The reviewer added a note, undid it, added another and saved.
+    - The PdfViewer's save wasn't incremental: the saved file differs from the original from byte 8 on, and
+      `/ByteRange [0 914 17300 301]` no longer brackets its `/Contents` (byte 914 is `1`, not `<`). So the signature
+      is broken.
+    - The file holds two revisions, the PdfViewer's rewrite and `MarkupAuthor`'s update, and the undone note's words
+      are in it, since `PdfCompaction` saw the `/ByteRange` and left the file as it was.
+  - Inferred, not checked: the PdfViewer reads a form's signatures from its top-level fields only, as PDFium's
+    `FPDF_GetSignatureCount` does. A usage-rights signature (UR3, in `/Perms`, not a field) wasn't tried.
+  - It's the PdfViewer's own behaviour, and older than this fix: the branch doesn't change the PdfViewer's save, so
+    main's does the same (inferred: the test ran on the branch only). The build keeps its rule: a PDF with a
+    `/ByteRange` gets no full save.
+  - Left to the owner:
+    - What a save does when it would break a signature: say so, refuse, or save as now.
+    - Whether `PdfCompaction` tells an intact signature from a broken one, so a broken one gets the full save.
+  - It goes into the note for Avalonia, with the leftovers: the PdfViewer's docs say signed files are saved as
+    incremental updates, and the one tested with a nested signature field wasn't.
 
 ### The owner's to-do list, to fill the pending rows
 

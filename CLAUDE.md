@@ -21,7 +21,7 @@ You need the .NET 10 SDK (`global.json` pins it). The PdfViewer needs the Avalon
 
 ```bash
 dotnet test CoffeePdf.sln                                    # everything; the PdfViewer's tests skip without the key
-dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find
+COFFEEPDF_PROBES=1 dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find; the variable runs the heavy ones
 dotnet run --project CoffeePdf -- <file.pdf>                 # the app
 packaging/mac/package.sh 1.2.3                               # CoffeePDF.app and its .dmg, on a Mac
 packaging/mac/make-icon.sh                                   # CoffeePDF.icns from packaging/icon/CoffeePDF.png; commit it
@@ -47,7 +47,8 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 - **`TreatWarningsAsErrors` is on.**
 - **The PdfViewer's `AutoSave` stays off** (spec §6.4).
 - **Every save goes through `DocumentWindow.SaveToAsync`:** the PdfViewer saves to memory, `MarkupAuthor` writes the
-  author, and `AtomicFile` replaces the file. The PdfViewer's `AllowDocumentSaving` stays off (spec §16 Decision 1).
+  author, `PdfCompaction` gives an unsigned PDF a full save (spec §6.4), and `AtomicFile` replaces the file. The
+  PdfViewer's `AllowDocumentSaving` stays off (spec §16 Decision 1).
 - **CoffeePDF has its own copy of PDFium** (`libcoffeepdfium`, bound as `"coffeepdfium"`), separate from the
   PdfViewer's. The core's calls take `Pdfium.Gate`, and nothing calls `FPDF_DestroyLibrary`. `package.sh` names its
   architecture.

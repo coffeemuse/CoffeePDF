@@ -64,6 +64,76 @@ public sealed class DocumentWindowSaveTests : IDisposable
     }
 
     [PdfViewerFact]
+    public async Task A_note_undone_before_a_save_never_reaches_the_file()
+    {
+        // Spec §16, finding 3's fix: the PdfViewer's save writes the undone note too, unused, with its words in plain text.
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+
+        var (saved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Withdrawn remark");
+            await window.Viewer.UndoAsync();
+            await window.Viewer.AddStickyNoteAsync(0, 200, 200, "Kept");
+            return (await window.SaveAsync(), errorList);
+        });
+
+        Assert.True(saved);
+        Assert.Empty(errors);
+        var bytes = File.ReadAllBytes(path);
+        Assert.True(PdfBytes.Holds(bytes, "Kept")); // so the next line can't pass on text PdfBytes can't read
+        Assert.False(PdfBytes.Holds(bytes, "Withdrawn remark"));
+        Assert.Equal(Author, Assert.Single(PdfAnnotations.Read(bytes, 0)).Author);
+    }
+
+    [PdfViewerFact]
+    public async Task A_note_undone_after_a_save_is_gone_at_the_next_save()
+    {
+        // A save doesn't reload the PdfViewer's document, so the note it undid stays in its copy of the document.
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+
+        var (saved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStickyNoteAsync(0, 200, 200, "Kept");
+            await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Withdrawn remark");
+            var first = await window.SaveAsync();
+            await window.Viewer.UndoAsync();
+            return (first && await window.SaveAsync(), errorList);
+        });
+
+        Assert.True(saved);
+        Assert.Empty(errors);
+        var bytes = File.ReadAllBytes(path);
+        Assert.True(PdfBytes.Holds(bytes, "Kept")); // so the next line can't pass on text PdfBytes can't read
+        Assert.False(PdfBytes.Holds(bytes, "Withdrawn remark"));
+        Assert.Equal(Author, Assert.Single(PdfAnnotations.Read(bytes, 0)).Author);
+    }
+
+    [PdfViewerFact]
+    public async Task A_stamp_undone_never_reaches_the_file()
+    {
+        // The stamp's label is in its drawing too, which PdfBytes reads once inflated.
+        var path = Write("fixture.pdf", MinimalPdf.Build());
+
+        var (saved, errors) = await Headless.RunAsync(async () =>
+        {
+            var (window, errorList) = await TestWindows.OpenAsync(path);
+            await window.Viewer.AddStampAsync(0, "Withdrawn stamp", 300, 400, null, null, null);
+            await window.Viewer.UndoAsync();
+            await window.Viewer.AddStickyNoteAsync(0, 200, 200, "Kept");
+            return (await window.SaveAsync(), errorList);
+        });
+
+        Assert.True(saved);
+        Assert.Empty(errors);
+        var bytes = File.ReadAllBytes(path);
+        Assert.True(PdfBytes.Holds(bytes, "Kept")); // so the next line can't pass on text PdfBytes can't read
+        Assert.False(PdfBytes.Holds(bytes, "Withdrawn stamp"));
+        Assert.Single(PdfAnnotations.Read(bytes, 0));
+    }
+
+    [PdfViewerFact]
     public async Task Another_apps_unnamed_authorless_note_stays_authorless()
     {
         // An unnamed note is told apart by its shape, which the PdfViewer's save must keep as it was.
@@ -153,6 +223,8 @@ public sealed class DocumentWindowSaveTests : IDisposable
         var note = Assert.Single(PdfAnnotations.Read(bytes, 0, EncryptedPdf.UserPassword));
         Assert.Equal(Author, note.Author);
         Assert.Throws<InvalidDataException>(() => PdfAnnotations.Read(bytes, 0));
+        // PdfBytes.Holds can't see into encrypted bytes: one save shows the password reached the full save.
+        Assert.Equal(1, PdfBytes.Saves(bytes));
     }
 
     private static T? Visible<T>(Window window, Func<T, bool> match) where T : Control =>
