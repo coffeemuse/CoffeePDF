@@ -780,7 +780,8 @@ what was planned. This is what the build showed, and what it changed. No owner's
      Healdan as a new version.* and follows nothing, so its title stays a version behind until the next save. Phase 2's
      reading (§6.5) was wrong. Fixed (2026-11-01): it follows `/v1/saved` after `/v1/new-version`, as after a save, and
      the message is gone. `Save_as_New_Version_with_nothing_to_save_follows_the_file_as_it_is_to_Healdan` replaces the
-     test of the message. Not yet checked on the Mac.
+     test of the message. Checked on the Mac (2026-11-05, on 0.3.1-fullsave.1, below): with nothing changed, Save as
+     New Version moved the title to the next version at once, and Healdan listed it.
      - The review of #11 found the same reading behind the order with unsaved changes: `MarkNextVersion` starts the
        file's settle at once, so a save slower than 1.2 seconds after `/v1/new-version` left the old file as the
        version. Save as New Version now asks `/v1/state`, saves, then calls `/v1/new-version`, so the Helper being away
@@ -791,7 +792,8 @@ what was planned. This is what the build showed, and what it changed. No owner's
      where §6.1 shows the Helper's title as it is. CoffeePDF's code shows the Helper's title as it is
      (`WindowDocument.Title`). What disagreed was §6.1's table, whose read-only row gave only a read-only copy's title,
      with ` (read-only)`. §6.1 now gives both. If the owner saw ` (read-only)` in the title bar after H4, it's a bug
-     still to find.
+     still to find. **Settled (owner, 2026-11-05):** the title stayed as the Helper sent it, with no ` (read-only)`, so
+     there's no bug.
   3. *A full rewrite.* The checked-out PDF went from 204,021 bytes to 39,504 at CoffeePDF's first save. The PdfViewer
      rewrites an unsigned PDF whole (§16 row 1), which can drop unused objects and earlier revisions. Not yet shown:
      that nothing the owner can see was lost. Compare that document's version before the save with the one after.
@@ -843,9 +845,9 @@ what was planned. This is what the build showed, and what it changed. No owner's
   `accepted` and `source=Notarized Developer ID`.
 - **After the merges (2026-11-01).** §2.5 step 1 passed from the web page, once Healdan-Project/healdan#151 was merged
   and the owner's server upgraded, and Healdan Helper 0.5.0 was released (M3.6's plan, "Hands-on checks").
-- **Left before v1.0.** Finding 1 checked on the Mac, finding 2 settled, the owner's checks of finding 3's fix
-  (below), and the owner's answer on the PdfViewer's save breaking a signature nested under a parent field (below);
-  then CoffeePDF v1.0 (§13).
+- **Left before v1.0: the release (§13).** The rest is done (2026-11-05): finding 1 checked on the Mac, finding 2
+  settled, the owner's checks of finding 3's fix passed, and the owner answered on the PdfViewer's save breaking a
+  signature nested under a parent field (below).
 
 ### Finding 3's fix: a full save for unsigned PDFs (designed and built 2026-11-03)
 
@@ -929,7 +931,7 @@ what was planned. This is what the build showed, and what it changed. No owner's
     uncompressed image of about 30 MB that is a single repeated byte. The full save of its 30,129,501 bytes took 134,
     90 and 136 ms, and each run wrote 175,524 bytes. The save presumably compressed the image (inferred: the output's
     filters weren't inspected). A real scan wasn't timed, so these times don't show what one takes.
-  - Left: the owner's checks on the Mac.
+  - The owner's checks on the Mac passed (2026-11-05, below).
 - **Code review (2026-11-04).** The review's findings changed the build:
   - the rules for encrypted PDFs with XMP metadata, for telling a signature, and for logging, above;
   - a save lets go of the PdfViewer's buffer before the write, and the full save's buffer starts at the input's size;
@@ -953,11 +955,29 @@ what was planned. This is what the build showed, and what it changed. No owner's
   - It's the PdfViewer's own behaviour, and older than this fix: the branch doesn't change the PdfViewer's save, so
     main's does the same (inferred: the test ran on the branch only). The build keeps its rule: a PDF with a
     `/ByteRange` gets no full save.
-  - Left to the owner:
+  - Asked of the owner:
     - What a save does when it would break a signature: say so, refuse, or save as now.
     - Whether `PdfCompaction` tells an intact signature from a broken one, so a broken one gets the full save.
+  - **Decision (owner, 2026-11-05): a save does as now.** It's a known limit for v1, as an undone markup in a signed
+    PDF is, and nothing changes in the code for v1. So `PdfCompaction` keeps its rule, and doesn't tell an intact
+    signature from a broken one.
   - It goes into the note for Avalonia, with the leftovers: the PdfViewer's docs say signed files are saved as
     incremental updates, and the one tested with a nested signature field wasn't.
+- **The owner's checks on the Mac (2026-11-05): all passed.**
+  - *The build.* `packaging/mac/package.sh 0.3.1-fullsave.1` on main at b3de76c, with the key and no signing identity:
+    ad-hoc, without the hardened runtime (Decision 4), and not notarised. A disk image of 46,705,854 bytes. Its six
+    binaries are arm64, `codesign --verify --strict --deep` passed, and the key's text isn't in the binary. The owner
+    installed it in Applications in place of 0.3.0, so the Helper launched it by its bundle id.
+  - *A local PDF that isn't signed.* A note with a marker word, undone, then another note, and a save. Searching the
+    saved file for the word (`strings -a`, `grep -c`) found none, and Preview showed the page and the kept note as
+    before.
+  - *A Healdan document.* A markup, one markup undone, and ⌘S: the title moved on to the next version. The window was
+    closed, so the document was checked in. The version downloaded from Healdan doesn't hold the undone markup's word.
+  - *A password-protected PDF.* Marked up and saved, it still asked for its password in Preview.
+  - *A signed PDF.* Marked up and saved, it still opened in Preview with its signature. Preview doesn't show whether a
+    signature still verifies (§16 row 1), so Acrobat's verdict stays in issue #3. Not recorded: whether its signature
+    field sat under a parent field.
+  - *Finding 1,* on the same build (above).
 
 ### The owner's to-do list, to fill the pending rows
 

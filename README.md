@@ -3,7 +3,8 @@
 An everyday PDF app for macOS, in the spirit of Preview, that works directly with documents stored and versioned in
 [Healdan](https://github.com/Healdan-Project/healdan), through the Healdan Helper.
 
-**Status:** pre-release, in Phase 2 (Healdan in CoffeePDF). See [the roadmap](docs/ROADMAP.md) and
+**Status:** v1 (read and mark up) is built, and the owner's checks before v1.0 passed on 2026-11-05. The latest release
+is `v0.3.0`, and v1.0 is next. See [the roadmap](docs/ROADMAP.md) and
 [the v1 design](docs/superpowers/specs/2026-10-29-coffeepdf-v1-design.md).
 
 ## Building

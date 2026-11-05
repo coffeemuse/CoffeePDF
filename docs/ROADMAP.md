@@ -15,12 +15,14 @@
   first step by a typed link, and left three findings for CoffeePDF (the spec's §16, Phase 3). Step 1 then passed from
   the web page, and Healdan Helper 0.5.0 was released, the same day. Finding 3, the full rewrite, is settled
   (2026-11-02): nothing was lost, but an undone markup stays in the saved file, unseen. Its fix, a full save for
-  unsigned PDFs, is built (2026-11-03, the spec's §16), and waits for the owner's checks. The final review found that
-  the PdfViewer's save breaks a signature nested under a parent field, which is for the owner to decide.
+  unsigned PDFs, is built (2026-11-03, the spec's §16). The final review found that the PdfViewer's save breaks a
+  signature nested under a parent field. On 2026-11-05 the owner's checks of the fix passed on the test build
+  0.3.1-fullsave.1, finding 1 was checked and finding 2 settled, and the owner decided that a save which breaks a
+  nested signature does as now, a known limit for v1. Only the v1.0 release is left.
   - The first signed, notarised pre-release, `v0.0.1-spike4`, passed Gatekeeper on 2026-10-30
     ([Releasing](RELEASING.md)).
   - The first release, `v0.3.0`, passed Gatekeeper on 2026-11-01. It has Phase 3's fix to Save as New Version and the
-    menu bar with no window open, so the checks left before v1.0 can run on it.
+    menu bar with no window open, but not the full save, which came after it.
   - [Issue #9](https://github.com/coffeemuse/CoffeePDF/issues/9), the macOS 27 menu bar, is worked around by a
     temporary patch to Avalonia's macOS library (AvaloniaUI/Avalonia#22285), and the owner's check passed on
     2026-10-31. Removing it is in the backlog.
@@ -35,7 +37,7 @@
 | 1. Standalone app | Viewing, markup (with its author written through PDFium), forms, printing, Preferences, Open Recent, the default PDF app | built 2026-10-30; the owner's checks on the Mac passed 2026-10-30, four after fixes; findings in the spec's §16 |
 | 2. Healdan in CoffeePDF | The channel client, the window modes and the flows of spec §6, against a fake Helper | built 2026-10-31; the owner's checks on the Mac passed 2026-10-31, one after a fix; the owner's questions answered 2026-10-30; findings in the spec's §16 |
 | 3. Healdan's milestone | Spec §4.4, through its own spec in Healdan's repository: Healdan's M3.6, "PDFs in CoffeePDF" | built 2026-11-01 in Healdan ([spec](https://github.com/Healdan-Project/healdan/blob/master/docs/superpowers/specs/2026-11-01-m3-6-pdfs-in-coffeepdf-design.md)), merged in Healdan-Project/healdan#150 and Healdan-Project/healdan#151; the owner's checks on Healdan Helper 0.5.0-rc1 passed 2026-11-01; Healdan Helper 0.5.0 released 2026-11-01; findings in the spec's §16 |
-| 4. Acceptance | Spec §2.5 on the owner's Mac against the owner's server, then v1.0 | walkthrough passed 2026-11-01 on Healdan Helper 0.5.0-rc1 (M3.6's checks), with step 1 by a typed link, then from the web page after #151; Save as New Version with nothing to save fixed 2026-11-01; release `v0.3.0`, with the fix, passed Gatekeeper 2026-11-01; finding 3 (the full rewrite) settled 2026-11-02, nothing lost; left: that fix checked, finding 2 settled, the owner's checks of finding 3's fix (a full save for unsigned PDFs, built 2026-11-03; the spec's §16, Phase 3), and the owner's answer on the PdfViewer's save breaking a signature nested under a parent field, then v1.0 |
+| 4. Acceptance | Spec §2.5 on the owner's Mac against the owner's server, then v1.0 | walkthrough passed 2026-11-01 on Healdan Helper 0.5.0-rc1 (M3.6's checks), with step 1 by a typed link, then from the web page after #151; Save as New Version with nothing to save fixed 2026-11-01; release `v0.3.0`, with the fix, passed Gatekeeper 2026-11-01; finding 3 (the full rewrite) settled 2026-11-02, nothing lost; its fix, a full save for unsigned PDFs, built 2026-11-03 (the spec's §16, Phase 3); on 2026-11-05, on the test build 0.3.1-fullsave.1, the owner's checks of that fix passed and the Save as New Version fix was checked, finding 2 was settled with no bug, and the owner decided that a save breaking a signature nested under a parent field does as now (a known limit for v1); left: v1.0 |
 
 ## v2
 
@@ -54,6 +56,9 @@ moves to the control's own when a newer PdfViewer adds the feature (the spec's �
   Avalonia 12.1.5 (2026-11-02) doesn't fix it.
 - **A writer for signed PDFs' updates,** so an undone markup doesn't stay in one: it rewrites only what follows the
   signed bytes, keeping only what the document uses. v1 leaves it as a known limit (the spec's §16, finding 3's fix).
+- **A save that breaks a signature nested under a parent field.** The PdfViewer's save rewrites such a PDF whole, and
+  v1 saves as it does: a known limit (owner, 2026-11-05; the spec's §16, finding 3's fix). It's in the note for
+  Avalonia. Revisit it when a PdfViewer saves it incrementally, or with the writer above.
 - OCR and comparing versions, which may belong on Healdan's server.
 - Linux, after the Helper's Linux phase. Windows later. Both make their icons from the artwork in
   `packaging/icon/CoffeePDF.png`, as `packaging/mac/make-icon.sh` does the Mac's.
