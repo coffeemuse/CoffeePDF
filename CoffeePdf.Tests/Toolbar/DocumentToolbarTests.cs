@@ -516,4 +516,30 @@ public sealed class DocumentToolbarTests : IDisposable
         Assert.Equal("Text (⌃⌘T)", tips[PdfViewerTool.Text]);
         Assert.Equal("Note (⌃⌘N)", tips[PdfViewerTool.Note]);
     }
+
+    [PdfViewerFact]
+    public async Task Clicking_the_label_already_shown_as_current_arms_Stamp_with_it()
+    {
+        var path = Fixture();
+
+        var (tool, first, current, shown) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var current = window.Viewer.StampLabels[0];
+            window.Toolbar.StampFlyout.ShowAt(window.Toolbar.StampButton);
+            // Laid out and under the pointer: the popup is placed a pass after it opens.
+            await TestWindows.WaitForAsync(() => window.Toolbar.StampLabelList.GetVisualDescendants().OfType<ListBoxItem>()
+                .FirstOrDefault(i => (string?)i.Content == current) is { IsEffectivelyVisible: true, Bounds.Width: > 0 } i
+                && i.TranslatePoint(new Point(i.Bounds.Width / 2, i.Bounds.Height / 2), window) is { } at
+                && window.InputHitTest(at) is Visual hit && (hit == i || i.IsVisualAncestorOf(hit)));
+            var item = window.Toolbar.StampLabelList.GetVisualDescendants().OfType<ListBoxItem>().First(i => (string?)i.Content == current);
+            Assert.Equal(current, window.Toolbar.StampLabelList.SelectedItem); // shown as current, so no SelectionChanged follows
+            Click(window, item);
+            return (window.Viewer.ActiveTool, window.Viewer.StampLabels[0], current, window.Toolbar.StampFlyout.IsOpen);
+        });
+
+        Assert.Equal(PdfViewerTool.Stamp, tool);
+        Assert.Equal(current, first);
+        Assert.False(shown);
+    }
 }

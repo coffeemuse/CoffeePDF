@@ -6,6 +6,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using CoffeePdf.Windows;
 
 namespace CoffeePdf.Toolbar;
@@ -26,6 +27,7 @@ public partial class DocumentToolbar : UserControl
     public DocumentToolbar()
     {
         InitializeComponent();
+        StampLabelList.AddHandler(PointerReleasedEvent, OnStampLabelReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         FillZoomMenu();
         foreach (var shape in ToolbarRules.Shapes)
             ShapesMenu.Items.Add(Item(shape.ToString(), () => ChooseShape(shape)));
@@ -346,6 +348,19 @@ public partial class DocumentToolbar : UserControl
     }
 
     private void OnStampOpening(object? sender, EventArgs e) => ShowStamp();
+
+    /// <summary>
+    /// A click on the label already selected raises no SelectionChanged, so a release over any label chooses it too (spec §3);
+    /// the current label stays selected, to show which one the button places.
+    /// </summary>
+    private void OnStampLabelReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (e.InitialPressMouseButton == MouseButton.Left && (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { Content: string label })
+        {
+            ChooseStampLabel(label);
+            StampFlyout.Hide();
+        }
+    }
 
     private void OnStampLabelChosen(object? sender, SelectionChangedEventArgs e)
     {
