@@ -1,9 +1,8 @@
 # CoffeePDF's own toolbar
 
 - **Date:** 2026-11-05
-- **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-05. Awaiting the owner's
-  review of this written spec. The implementation plan follows in
-  `docs/superpowers/plans/2026-11-05-coffeepdf-toolbar.md`.
+- **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-05, and the owner approved
+  this written spec the same day. The implementation plan is `docs/superpowers/plans/2026-11-05-coffeepdf-toolbar.md`.
 - **Related:** the v1 spec (`2026-10-29-coffeepdf-v1-design.md`), its §4.3 (the app's parts), §6.1 (a window's mode),
   §8 (testing) and §16 Decision 1 (CoffeePDF does what the PdfViewer can't); `docs/ROADMAP.md`.
 

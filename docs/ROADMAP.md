@@ -43,7 +43,7 @@
 
 | Piece | What | Status |
 |---|---|---|
-| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05; awaiting the owner's review of the spec, then the plan |
+| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05, spec approved and [plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md) written the same day; the build next |
 
 ## v2
 
