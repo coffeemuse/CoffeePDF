@@ -26,7 +26,12 @@
         </ToggleButton>
         <TextBox x:Name="PageBox" Width="48" VerticalAlignment="Center" TextAlignment="Right"
                  ToolTip.Tip="Page" AutomationProperties.Name="Page" KeyDown="OnPageKeyDown" LostFocus="OnPageLostFocus" />
-        <TextBlock x:Name="PageCountText" VerticalAlignment="Center" />
+        <!-- The count keeps the room "of 9999" takes, in the theme's own font, so a long document doesn't push the row past
+             the window's MinWidth (the final review's I3). -->
+        <Panel VerticalAlignment="Center">
+          <TextBlock Text="of 9999" Opacity="0" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+          <TextBlock x:Name="PageCountText" />
+        </Panel>
         <TextBox x:Name="ZoomBox" Width="64" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                  ToolTip.Tip="Zoom" AutomationProperties.Name="Zoom" KeyDown="OnZoomKeyDown" LostFocus="OnZoomLostFocus" />
         <DropDownButton x:Name="ZoomMenuButton" Classes="bar" ToolTip.Tip="Zoom Options" AutomationProperties.Name="Zoom Options">

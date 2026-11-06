@@ -26,6 +26,7 @@ public partial class DocumentToolbar : UserControl
     private bool _showingStamp;                      // the stamp menu is being set from the viewer, not by a person
     private readonly HashSet<TextBox> _edited = [];  // the page and zoom boxes typed in since they last showed the viewer
     private bool _showingBox;                        // a box's text is being set from the viewer, not typed
+    private ShapeType _shape = ShapeType.Rectangle;  // the shape the Shapes button arms: the last one chosen (spec §3)
 
     public DocumentToolbar()
     {
@@ -327,10 +328,21 @@ public partial class DocumentToolbar : UserControl
     /// <summary>The button for <paramref name="tool"/>, for the tests.</summary>
     internal Control ButtonFor(PdfViewerTool tool) => ToolButtons.Single(b => ToolOf(b) == tool);
 
-    /// <summary>Arms <paramref name="tool"/>, or disarms it when it's armed already, so text selection comes back (spec §3).</summary>
+    /// <summary>
+    /// Arms <paramref name="tool"/>, or disarms it when it's armed already, so text selection comes back (spec §3). The
+    /// Shape tool arms with the last shape chosen, which the viewer forgets when its tool is disarmed (the final review's
+    /// I2).
+    /// </summary>
     internal void Arm(PdfViewerTool tool)
     {
-        Viewer.ActiveTool = Viewer.ActiveTool == tool ? PdfViewerTool.None : tool;
+        if (Viewer.ActiveTool == tool)
+            Viewer.ActiveTool = PdfViewerTool.None;
+        else
+        {
+            if (tool == PdfViewerTool.Shape)
+                Viewer.SelectedShapeType = _shape;
+            Viewer.ActiveTool = tool;
+        }
         ShowTools();
     }
 
@@ -350,8 +362,10 @@ public partial class DocumentToolbar : UserControl
         ShowFormatMenus();
     }
 
+    /// <summary>Arms the Shape tool with <paramref name="shape"/>, which the Shapes button then arms (spec §3).</summary>
     internal void ChooseShape(ShapeType shape)
     {
+        _shape = shape;
         Viewer.SelectedShapeType = shape;
         Viewer.ActiveTool = PdfViewerTool.Shape;
     }

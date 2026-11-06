@@ -483,6 +483,35 @@ public sealed class DocumentToolbarTests : IDisposable
     }
 
     [PdfViewerFact]
+    public async Task The_Shapes_button_arms_the_last_shape_chosen()
+    {
+        // The final review's I2: the viewer resets SelectedShapeType when its tool is disarmed, so the button armed a
+        // rectangle whatever was chosen last.
+        var path = Fixture();
+
+        var (star, circle) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            window.Width = 1400;
+            await TestWindows.WaitForAsync(() => t.Bounds.Width >= 1400 && t.Tools.OverflowedChildren.Count == 0);
+            await DrawnAsync(window, t.PrintButton);
+            void Choose(string shape) => t.ShapesMenu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == shape).Command!.Execute(null);
+            Choose("Star");
+            Click(window, t.ShapesButton, across: 0.3); // disarms
+            Click(window, t.ShapesButton, across: 0.3);
+            var star = (v.ActiveTool, v.SelectedShapeType);
+            Choose("Circle");
+            Click(window, t.ButtonFor(PdfViewerTool.Highlight));
+            Click(window, t.ShapesButton, across: 0.3);
+            return (star, (v.ActiveTool, v.SelectedShapeType));
+        });
+
+        Assert.Equal((PdfViewerTool.Shape, ShapeType.Star), star);
+        Assert.Equal((PdfViewerTool.Shape, ShapeType.Circle), circle);
+    }
+
+    [PdfViewerFact]
     public async Task The_Stamp_menu_arms_the_Stamp_tool_with_the_label_chosen_first()
     {
         var path = Fixture();
@@ -969,6 +998,52 @@ public sealed class DocumentToolbarTests : IDisposable
 
         Assert.True(formatEnd <= rightStart, $"The format menus end at {formatEnd}, past the right group's start at {rightStart}");
         Assert.True(shown);
+    }
+
+    [PdfViewerFact]
+    public async Task At_its_minimum_width_a_long_documents_page_count_still_fits()
+    {
+        // The final review's I3: the page count grew with the document ("of 1000"), so at the minimum width the Text
+        // Format button ran over the search box.
+        var path = Fixture(pages: 1000);
+
+        var (leftEnd, toolsStart, formatEnd, rightStart, rightEnd, width, shown) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            window.Width = window.MinWidth;
+            t.Arm(PdfViewerTool.Text);
+            await TestWindows.WaitForAsync(() => t.PageCountText.Text == "of 1000" && t.Bounds.Width <= window.MinWidth
+                && t.FormatGroup.IsEffectivelyVisible && t.FormatGroup.Bounds.Width > 0);
+            double X(Control c, double at) => c.TranslatePoint(new Point(at, 0), t)!.Value.X;
+            return (X(t.LeftGroup, t.LeftGroup.Bounds.Width), X(t.Tools, 0), X(t.FormatGroup, t.FormatGroup.Bounds.Width),
+                X(t.RightGroup, 0), X(t.RightGroup, t.RightGroup.Bounds.Width), t.Bounds.Width, t.TextButton.IsEffectivelyVisible);
+        });
+
+        Assert.True(leftEnd <= toolsStart, $"The left group ends at {leftEnd}, past the tools' start at {toolsStart}");
+        Assert.True(formatEnd <= rightStart, $"The format menus end at {formatEnd}, past the right group's start at {rightStart}");
+        Assert.True(rightEnd <= width, $"The right group ends at {rightEnd}, past the toolbar's width {width}");
+        Assert.True(shown);
+    }
+
+    [PdfViewerFact]
+    public async Task The_page_count_has_room_for_four_digits_whatever_the_count()
+    {
+        // I3's fix: the count keeps the width of "of 9999", so the window's minimum width, measured with a short document,
+        // holds for a long one too.
+        var path = Fixture();
+
+        var (reserved, needed) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            await TestWindows.WaitForAsync(() => t.PageCountText.Text == "of 1" && t.PageCountText.Bounds.Width > 0);
+            var probe = new TextBlock { Text = "of 9999", FontFamily = t.PageCountText.FontFamily, FontSize = t.PageCountText.FontSize };
+            probe.Measure(Size.Infinity);
+            return (t.PageCountText.Bounds.Width, probe.DesiredSize.Width);
+        });
+
+        Assert.True(reserved >= needed, $"The count is {reserved} wide, short of the {needed} that \"of 9999\" needs");
     }
 
     [PdfViewerFact]
