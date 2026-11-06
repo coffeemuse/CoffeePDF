@@ -65,6 +65,33 @@ def deps(*packages, runtime="10.0.11"):
 CARRIED = (("Widget", "2.0.1", "runtime"), ("Widget.NativeAssets.macOS", "2.0.1", "native"),
            ("Helper.Lib", "0.5.0", "runtime"))
 LIBRARIES = ["libRuntime.dylib", "libWidget.dylib"]
+DEVTOOLS = (("AvaloniaUI.DiagnosticsSupport", "2.2.3", "runtime"),
+            ("Microsoft.Extensions.Logging.Abstractions", "8.0.0", "runtime"),
+            ("Microsoft.Extensions.DependencyInjection.Abstractions", "8.0.0", "runtime"),
+            ("Microsoft.IO.RecyclableMemoryStream", "3.0.1", "runtime"))
+
+
+def depending(document, needs):
+    """<document>, with each library's dependencies set from <needs>: {"Name/version": {"Name": "version"}}."""
+    target = document["targets"][document["runtimeTarget"]["name"]]
+    for key, names in needs.items():
+        target[key]["dependencies"] = names
+    return document
+
+
+def with_devtools(*extra, project=None, devtools=None):
+    """A test build's publish: CARRIED, the developer tools and <extra>. The app's project needs Widget, Helper.Lib, the
+    developer tools and <project>. AvaloniaUI.DiagnosticsSupport needs two of its packages and <devtools>, and the third
+    comes through Logging.Abstractions, as in the real deps.json."""
+    return depending(deps(*CARRIED, *DEVTOOLS, *extra), {
+        "CoffeePDF/1.0.0": {"Widget": "2.0.1", "Helper.Lib": "0.5.0", "AvaloniaUI.DiagnosticsSupport": "2.2.3",
+                            **(project or {})},
+        "Widget/2.0.1": {"Widget.NativeAssets.macOS": "2.0.1"},
+        "AvaloniaUI.DiagnosticsSupport/2.2.3": {"Microsoft.Extensions.Logging.Abstractions": "8.0.0",
+                                                "Microsoft.IO.RecyclableMemoryStream": "3.0.1", **(devtools or {})},
+        "Microsoft.Extensions.Logging.Abstractions/8.0.0": {
+            "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0"},
+    })
 
 
 class TheCheck(unittest.TestCase):
@@ -130,6 +157,57 @@ class TheCheck(unittest.TestCase):
                 json.dump({"libraries": {}}, file)
             self.assertEqual(check.main([broken, notices, folder]), 1)
         self.assertEqual(said.getvalue().count("couldn't be checked"), 2)
+
+
+class TheDeveloperTools(unittest.TestCase):
+    """The devtools spec's §5: a test build made with COFFEEPDF_DEVTOOLS=1 needs no notices for the developer tools,
+    and nothing else may carry them."""
+
+    assertSays = TheCheck.assertSays
+
+    def test_they_are_found_through_the_dependencies(self):
+        self.assertEqual(check.devtools_only(with_devtools()), {
+            "AvaloniaUI.DiagnosticsSupport", "Microsoft.Extensions.Logging.Abstractions",
+            "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.IO.RecyclableMemoryStream"})
+
+    def test_a_publish_without_them_has_none(self):
+        self.assertEqual(check.devtools_only(deps(*CARRIED)), set())
+
+    def test_a_test_build_leaves_out_only_them(self):
+        self.assertEqual(check.problems(with_devtools(), NOTICES, LIBRARIES, devtools=True), [])
+
+    def test_a_build_without_the_flag_that_carries_them_is_refused(self):
+        self.assertSays(check.problems(with_devtools(), NOTICES, LIBRARIES),
+                        "the publish carries AvaloniaUI.DiagnosticsSupport, the developer tools, which only a test "
+                        "build made with COFFEEPDF_DEVTOOLS=1 may carry")
+
+    def test_the_flag_without_them_is_refused(self):
+        self.assertSays(check.problems(deps(*CARRIED), NOTICES, LIBRARIES, devtools=True),
+                        "COFFEEPDF_DEVTOOLS=1 asked for the developer tools, but the publish doesn't carry "
+                        "AvaloniaUI.DiagnosticsSupport")
+
+    def test_a_package_the_app_needs_too_stays_checked(self):
+        document = with_devtools(("Shared.Lib", "1.0.0", "runtime"), project={"Shared.Lib": "1.0.0"},
+                                 devtools={"Shared.Lib": "1.0.0"})
+        self.assertSays(check.problems(document, NOTICES, LIBRARIES, devtools=True),
+                        "Shared.Lib 1.0.0, which no section names")
+
+    def test_a_test_build_still_needs_every_other_notice(self):
+        document = with_devtools(("New.Managed", "1.0.0", "runtime"), project={"New.Managed": "1.0.0"})
+        self.assertSays(check.problems(document, NOTICES, LIBRARIES, devtools=True),
+                        "New.Managed 1.0.0, which no section names")
+
+    def test_main_takes_the_flag(self):
+        with tempfile.TemporaryDirectory() as folder, contextlib.redirect_stderr(io.StringIO()):
+            published, notices = os.path.join(folder, "CoffeePDF.deps.json"), os.path.join(folder, "notices.md")
+            with open(published, "w", encoding="utf-8") as file:
+                json.dump(with_devtools(), file)
+            with open(notices, "w", encoding="utf-8") as file:
+                file.write(NOTICES)
+            for library in LIBRARIES:
+                open(os.path.join(folder, library), "w").close()
+            self.assertEqual(check.main(["--devtools", published, notices, folder]), 0)
+            self.assertEqual(check.main([published, notices, folder]), 1)
 
 
 class TheRealNotices(unittest.TestCase):
