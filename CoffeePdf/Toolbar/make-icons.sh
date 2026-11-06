@@ -1,7 +1,8 @@
 #!/bin/bash
 # Writes Icons.axaml, the toolbar's icons (toolbar spec §3, §4): Fluent UI System Icons' regular 20-point shapes at a
 # pinned version (MIT, © Microsoft Corporation; THIRD-PARTY-NOTICES.md), and the two CoffeePDF draws itself. Run it
-# after changing the list below, and commit Icons.axaml. Needs curl and python3.
+# after changing the list below, and commit Icons.axaml. Needs curl and python3. A new version also updates Fluent's
+# section and row in THIRD-PARTY-NOTICES.md, with the LICENSE at that tag; test_check_notices.py checks the version.
 set -euo pipefail
 
 version=1.1.344

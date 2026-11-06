@@ -4,7 +4,7 @@
 - **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-05, and the owner approved
   this written spec the same day. Built on 2026-11-05
   (`docs/superpowers/plans/2026-11-05-coffeepdf-toolbar.md`). The owner's checks on the Mac are next (§7). Fluent's
-  notice waits on the pull request that adds `THIRD-PARTY-NOTICES.md` (§8, §10).
+  notice is in `THIRD-PARTY-NOTICES.md`, added on 2026-11-06 once coffeemuse/CoffeePDF#16 had created it (§8, §10).
 - **Related:** the v1 spec (`2026-10-29-coffeepdf-v1-design.md`), its §4.3 (the app's parts), §6.1 (a window's mode),
   §8 (testing) and §16 Decision 1 (CoffeePDF does what the PdfViewer can't); `docs/ROADMAP.md`.
 
@@ -203,14 +203,16 @@ pull request.
   - `CLAUDE.md` gets a rule beside the `AutoSave` one: the PdfViewer's own toolbar stays hidden, `DocumentToolbar`
     drives the viewer through its public API only, and every button has an icon from `Toolbar/Icons.axaml`, an
     accessible name and a tooltip.
-  - **Not done in this build.** `THIRD-PARTY-NOTICES.md` and `package.sh`'s copy of it come in coffeemuse/CoffeePDF#16,
-    still open. Its `package.sh` stops a package whose notices don't name every native library, and copying its file
-    here would merge it by hand. So this branch adds neither, and Fluent's notice is added after #16 merges and this
-    branch is brought up to date with main (§10).
-  - `THIRD-PARTY-NOTICES.md` at the repository's root gets the MIT notice of Fluent UI System Icons (© Microsoft
-    Corporation), and `packaging/mac/package.sh` copies the file into `Contents/Resources/`. The notices for what v1.0
-    already bundles are a change of their own, and whichever lands first creates the file. The two icons CoffeePDF draws
-    are its own and need no notice.
+  - **Not done in the build.** `THIRD-PARTY-NOTICES.md` and `package.sh`'s copy of it came in coffeemuse/CoffeePDF#16,
+    then still open. Its `package.sh` stops a package whose notices don't name every native library, and copying its
+    file here would have merged it by hand. So the build added neither, and Fluent's notice waited for #16 (§10).
+  - **Done once #16 merged (2026-11-06).** This branch was brought up to date with main, and `THIRD-PARTY-NOTICES.md`
+    got Fluent UI System Icons' section and row: version 1.1.344 and its MIT notice (© Microsoft Corporation). The npm
+    package carries no licence file, so the notice is the repository's `LICENSE` at the tag `1.1.344`, as #16 does for
+    such packages. The repository's `NOTICE` lists three tools its build uses, none of whose code is in the icons, so
+    the app doesn't carry it. Stamp is CoffeePDF's own. Squiggly is drawn on Fluent's underline letter, so the section
+    names it too. No `deps.json` lists the icons, so `check-notices.py` can't see them; `test_check_notices.py` checks
+    instead that the section gives the version `make-icons.sh` fetches.
   - §10 gets the probes' answers and the build's findings.
 
 ## 9. Not in this design
@@ -334,4 +336,4 @@ What this design rests on, and what the probes and the build find. The probes' a
     when headless input drops a drag (probe 5).
   The limits: a highlight already on the page can't be recoloured from the toolbar (probe 2). A selected text box
   that isn't being edited reads as a shape (probe 5), so it gets the shape's menus; whether they restyle it is for the
-  owner's check. Fluent's notice waits on #16 (§8).
+  owner's check. Fluent's notice was added on 2026-11-06, once #16 had merged (§8).
