@@ -2,8 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-06, and the owner
-  approved this written spec the same day. The implementation plan is
-  `docs/superpowers/plans/2026-11-06-coffeepdf-devtools.md`.
+  approved this written spec the same day.
+  Built on 2026-11-06 (`docs/superpowers/plans/2026-11-06-coffeepdf-devtools.md`). The acceptance run (§7) is next.
 - **Related:** the v1 spec (`2026-10-29-coffeepdf-v1-design.md`), its §8 (testing), §10 (CI and releases) and §12
   (the third-party notices); the toolbar spec (`2026-11-05-coffeepdf-toolbar-design.md`, on the toolbar's branch,
   coffeemuse/CoffeePDF#17); `packaging/mac/package.sh` and `packaging/mac/check-notices.py`.

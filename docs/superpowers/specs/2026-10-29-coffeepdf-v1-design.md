@@ -311,7 +311,7 @@ Healdan copies stay out of Open Recent and out of the Mac's recent documents, si
 - **App tests** run Avalonia headless.
   - Tests that need the PdfViewer carry `[Trait("Category", "PdfViewer")]`, and skip when the build has no licence key.
   - Pull requests without the key still run everything else.
-- **Checked by hand:** the look, focus, macOS integration and the Helper's windows. Each pull request that changes them lists its checks for the owner.
+- **Checked by hand:** the look, focus, macOS integration and the Helper's windows. Each pull request that changes them lists its checks for the owner. Before the hand-off, Claude runs what it can of them on a test build with Avalonia's Developer Tools (`docs/DEVTOOLS.md`, the devtools spec).
 
 ## 9. The channel contract (call)
 
@@ -330,6 +330,8 @@ The channel has no machine-readable contract the way the API's `openapi.yaml` is
 - **A `v1.2.3` tag** builds the app, signs it with the owner's Developer ID, notarises it, and attaches `CoffeePDF-1.2.3.dmg` to the tag's GitHub release.
   - It uses a `release` environment holding the Apple signing and notarising secrets, as the Helper's `helper-release` does. The Avalonia licence key is a repository secret instead, since the macOS runs' tests need it (changed in Phase 0).
   - Without those secrets, the package builds unsigned and is only uploaded as an artifact.
+- **Test builds** for the owner's checks carry Avalonia's Developer Tools (`COFFEEPDF_DEVTOOLS=1`), and a signed build
+  or a release's version never does (`2026-11-06-coffeepdf-devtools-design.md`, `docs/DEVTOOLS.md`).
 - **The hardened runtime** needs `allow-jit` for .NET, as the Helper's does. PDFium's native libraries, the PdfViewer's and CoffeePDF's own copy, are signed with the owner's Developer ID.
   - Only builds signed with an identity get the hardened runtime. An unsigned local package is ad-hoc signed without it, so it runs on the Mac that built it (§16 Decision 4).
 - **Releasing:** `docs/RELEASING.md` covers the secrets and each release.
