@@ -14,6 +14,19 @@
   <Import Project="../AvaloniaLicense.props" />
   <!-- TEMPORARY: a patched libAvaloniaNative.dylib for the macOS 27 menu bar, until Avalonia fixes it (AvaloniaUI/Avalonia#22285). -->
   <Import Project="../packaging/avalonia-native/AvaloniaNative.targets" />
+  <!-- Avalonia's Developer Tools, for a test build only (the devtools spec's §4). With CoffeePdfDevTools=true, which
+       package.sh's COFFEEPDF_DEVTOOLS=1 passes, the app references their package and Program calls WithDeveloperTools.
+       It's off unless a build sets it, Debug included, and package.sh and check-notices.py stop a release that carries
+       them. -->
+  <PropertyGroup>
+    <CoffeePdfDevTools Condition="'$(CoffeePdfDevTools)' == ''">false</CoffeePdfDevTools>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(CoffeePdfDevTools)' == 'true'">
+    <DefineConstants>$(DefineConstants);COFFEEPDF_DEVTOOLS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(CoffeePdfDevTools)' == 'true'">
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />

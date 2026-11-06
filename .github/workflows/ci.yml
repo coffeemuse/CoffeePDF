@@ -96,6 +96,12 @@ jobs:
           AVALONIA_LICENSE_KEY: ${{ matrix.runner == 'macos-15' && secrets.AVALONIA_LICENSE_KEY || '' }}
         run: dotnet test "${{ matrix.target }}" --configuration Release --filter "Category!=Probe"
 
+      # The developer tools' code (the devtools spec's §4) compiles only when CoffeePdfDevTools is set, which no package
+      # CI makes sets, so this builds it once to keep it compiling under TreatWarningsAsErrors.
+      - name: Build with the developer tools
+        if: matrix.runner == 'macos-15'
+        run: dotnet build CoffeePdf/CoffeePdf.csproj --configuration Release -p:CoffeePdfDevTools=true
+
   # The check to require on main: it passes only when both runners' tests passed.
   tests:
     name: Tests
