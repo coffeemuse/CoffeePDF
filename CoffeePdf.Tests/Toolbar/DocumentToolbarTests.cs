@@ -1,8 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CoffeePdf.Tests.Fixtures;
 using CoffeePdf.Tests.Windows;
+using CoffeePdf.Toolbar;
 using static CoffeePdf.Tests.Toolbar.ToolbarTesting;
 
 namespace CoffeePdf.Tests.Toolbar;
@@ -96,6 +98,90 @@ public sealed class DocumentToolbarTests : IDisposable
         Assert.Equal(1.5, level, precision: 6);
         Assert.Equal(PdfZoomMode.Manual, mode);
         Assert.Equal("150%", afterBad);
+    }
+
+    [PdfViewerFact]
+    public async Task Leaving_the_zoom_box_without_typing_keeps_the_fit_mode()
+    {
+        var path = Fixture();
+
+        var (mode, before, after) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Viewer.FitWidth();
+            await TestWindows.WaitForAsync(() => window.Viewer.ZoomMode == PdfZoomMode.FitWidth);
+            var before = window.Viewer.ZoomLevel;
+            window.Toolbar.ZoomBox.Focus();
+            Dispatcher.UIThread.RunJobs();
+            window.Viewer.FocusViewer();
+            Dispatcher.UIThread.RunJobs();
+            return (window.Viewer.ZoomMode, before, window.Viewer.ZoomLevel);
+        });
+
+        Assert.Equal(PdfZoomMode.FitWidth, mode);
+        Assert.Equal(before, after);
+    }
+
+    [PdfViewerFact]
+    public async Task Escape_in_the_zoom_box_puts_back_the_zoom_and_keeps_the_fit_mode()
+    {
+        var path = Fixture();
+
+        var (mode, before, after, text, expected) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Viewer.FitWidth();
+            await TestWindows.WaitForAsync(() => window.Viewer.ZoomMode == PdfZoomMode.FitWidth);
+            var before = window.Viewer.ZoomLevel;
+            Type(window, window.Toolbar.ZoomBox, "300%", enter: false);
+            Press(window, Key.Escape);
+            return (window.Viewer.ZoomMode, before, window.Viewer.ZoomLevel, window.Toolbar.ZoomBox.Text, ToolbarRules.ZoomText(window.Viewer.ZoomLevel));
+        });
+
+        Assert.Equal(PdfZoomMode.FitWidth, mode);
+        Assert.Equal(before, after);
+        Assert.Equal(expected, text);
+    }
+
+    [PdfViewerFact]
+    public async Task Leaving_the_page_box_without_typing_does_not_move_the_view()
+    {
+        var path = Fixture(pages: 3);
+
+        var (pageBefore, pageAfter, scrollBefore, scrollAfter) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var scroller = window.Viewer.GetVisualDescendants().OfType<Control>().First(c => c.Name == "PART_PagesContainer")
+                .GetVisualAncestors().OfType<ScrollViewer>().First();
+            var (pageBefore, scrollBefore) = (window.Viewer.CurrentPage, scroller.Offset.Y);
+            window.Toolbar.PageBox.Focus();
+            Dispatcher.UIThread.RunJobs();
+            window.Viewer.FocusViewer();
+            Dispatcher.UIThread.RunJobs();
+            return (pageBefore, window.Viewer.CurrentPage, scrollBefore, scroller.Offset.Y);
+        });
+
+        Assert.Equal(pageBefore, pageAfter);
+        Assert.Equal(scrollBefore, scrollAfter);
+    }
+
+    [PdfViewerFact]
+    public async Task Return_in_the_page_box_and_the_zoom_box_gives_focus_back_to_the_viewer()
+    {
+        var path = Fixture(pages: 3);
+
+        var (pageFocused, zoomFocused) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            Type(window, t.PageBox, "2");
+            var pageFocused = t.PageBox.IsKeyboardFocusWithin;
+            Type(window, t.ZoomBox, "150%");
+            return (pageFocused, t.ZoomBox.IsKeyboardFocusWithin);
+        });
+
+        Assert.False(pageFocused);
+        Assert.False(zoomFocused);
     }
 
     [PdfViewerFact]

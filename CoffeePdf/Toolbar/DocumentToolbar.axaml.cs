@@ -99,16 +99,26 @@ public partial class DocumentToolbar : UserControl
     /// <summary>Goes to the typed page, clamped, or puts back the page shown before (spec §5).</summary>
     private void CommitPage()
     {
+        var shown = Viewer.CurrentPage.ToString(CultureInfo.InvariantCulture);
+        if (PageBox.Text == shown)
+            return; // nothing typed: leaving the box must not move the view
         var page = ToolbarRules.ParsePage(PageBox.Text, Viewer.PageCount);
         if (page is { } typed)
             Viewer.GoToPage(typed);
         PageBox.Text = (page ?? Viewer.CurrentPage).ToString(CultureInfo.InvariantCulture);
     }
 
+    /// <summary>Return: commits, then hands focus back to the viewer, so the box follows it again (as Preview does).</summary>
+    private void EnterPage()
+    {
+        CommitPage();
+        Viewer.FocusViewer();
+    }
+
     private void OnPageKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
-            CommitPage();
+            EnterPage();
         else if (e.Key == Key.Escape)
         {
             PageBox.Text = Viewer.CurrentPage.ToString(CultureInfo.InvariantCulture); // so LostFocus commits nothing new
@@ -142,6 +152,8 @@ public partial class DocumentToolbar : UserControl
     /// <summary>Sets the typed zoom, clamped, or puts back the zoom shown before (spec §5).</summary>
     private void CommitZoom()
     {
+        if (ZoomBox.Text == ToolbarRules.ZoomText(Viewer.ZoomLevel))
+            return; // nothing typed: leaving the box must not swap a fit mode for a manual zoom
         if (ToolbarRules.ParseZoom(ZoomBox.Text, Viewer.MinZoom, Viewer.MaxZoom) is { } level)
             SetZoom(level);
         ZoomBox.Text = ToolbarRules.ZoomText(Viewer.ZoomLevel);
@@ -150,7 +162,10 @@ public partial class DocumentToolbar : UserControl
     private void OnZoomKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
+        {
             CommitZoom();
+            Viewer.FocusViewer(); // the box follows the viewer again (as Preview does)
+        }
         else if (e.Key == Key.Escape)
         {
             ZoomBox.Text = ToolbarRules.ZoomText(Viewer.ZoomLevel); // so LostFocus commits nothing new
