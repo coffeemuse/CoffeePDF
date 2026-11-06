@@ -43,7 +43,7 @@
 
 | Piece | What | Status |
 |---|---|---|
-| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05, spec approved and [plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md) written the same day; the build next |
+| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05; built on that date ([plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md)); the owner's checks on the Mac next; Fluent's notice waits on #16 (`THIRD-PARTY-NOTICES.md`) and is added after it merges |
 
 ## v2
 

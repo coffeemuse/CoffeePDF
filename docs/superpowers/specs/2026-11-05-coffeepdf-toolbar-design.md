@@ -2,7 +2,9 @@
 
 - **Date:** 2026-11-05
 - **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-05, and the owner approved
-  this written spec the same day. The implementation plan is `docs/superpowers/plans/2026-11-05-coffeepdf-toolbar.md`.
+  this written spec the same day. Built on 2026-11-05
+  (`docs/superpowers/plans/2026-11-05-coffeepdf-toolbar.md`). The owner's checks on the Mac are next (§7). Fluent's
+  notice waits on the pull request that adds `THIRD-PARTY-NOTICES.md` (§8, §10).
 - **Related:** the v1 spec (`2026-10-29-coffeepdf-v1-design.md`), its §4.3 (the app's parts), §6.1 (a window's mode),
   §8 (testing) and §16 Decision 1 (CoffeePDF does what the PdfViewer can't); `docs/ROADMAP.md`.
 
@@ -194,6 +196,10 @@ pull request.
   - `CLAUDE.md` gets a rule beside the `AutoSave` one: the PdfViewer's own toolbar stays hidden, `DocumentToolbar`
     drives the viewer through its public API only, and every button has an icon from `Toolbar/Icons.axaml`, an
     accessible name and a tooltip.
+  - **Not done in this build.** `THIRD-PARTY-NOTICES.md` and `package.sh`'s copy of it come in coffeemuse/CoffeePDF#16,
+    still open. Its `package.sh` stops a package whose notices don't name every native library, and copying its file
+    here would merge it by hand. So this branch adds neither, and Fluent's notice is added after #16 merges and this
+    branch is brought up to date with main (§10).
   - `THIRD-PARTY-NOTICES.md` at the repository's root gets the MIT notice of Fluent UI System Icons (© Microsoft
     Corporation), and `packaging/mac/package.sh` copies the file into `Contents/Resources/`. The notices for what v1.0
     already bundles are a change of their own, and whichever lands first creates the file. The two icons CoffeePDF draws
@@ -279,3 +285,23 @@ What this design rests on, and what the probes and the build find. The probes' a
   white and stroke black at width 2, no stamp colour, zoom 0.05 to 5. Setting `SearchQuery` to "fixture" searched by
   itself: one result at index 0 (zero-based), `FindNext` stayed at 0 (one result), and `ClearSearch` gave an empty query,
   no results and index -1. So `SearchCountText` in Task 4 counts from `index + 1`, and shows nothing at -1.
+- **The build (observed 2026-11-05).** The window's `MinWidth` is 760, measured headless with Avalonia's headless
+  fonts, not the Mac's: 740 failed, because the More button and the pinned format group need about 176 points. The
+  owner's resizing check confirms it. The keyed run passed all but the keyless probe, which skips: 176 core tests (1
+  skipped, a probe) and 217 app tests (1 skipped). The keyless run passed 176 core tests and 70 app tests, and skipped
+  148 that need the PdfViewer.
+  What the build changed from the plan because a probe or a test said so:
+  - `Selection()` reads only `:editing-text` and `:shape-selected`, not `SelectedShapeType` (probe 5).
+  - A colour chosen from a swatch or typed keeps the slot's opacity, as the default highlight is at half opacity
+    (probe 6).
+  - The page and zoom boxes commit only changed text, and Return gives focus back to the page, so a blur or Escape
+    doesn't turn Fit into a manual zoom.
+  - A Stamp label is chosen on a click over it, so the label shown as current can be chosen too.
+  - There are 24 icons, not 26: Colour and Dismiss were unused.
+  - Named flyouts (Zoom, Stamp, More) are reached through their buttons' `Flyout`, as the compiler makes no field for
+    them.
+  - The test helpers move the pointer before a click, flush input around typing, wait for a settled page, and re-drag
+    when headless input drops a drag (probe 5).
+  The limits: a highlight already on the page can't be recoloured from the toolbar (probe 2). A selected text box
+  that isn't being edited reads as a shape (probe 5), so it gets the shape's menus; whether they restyle it is for the
+  owner's check. Fluent's notice waits on #16 (§8).

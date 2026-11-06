@@ -46,6 +46,10 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 - **Tests wait for conditions,** never for fixed times.
 - **`TreatWarningsAsErrors` is on.**
 - **The PdfViewer's `AutoSave` stays off** (spec §6.4).
+- **The PdfViewer's own toolbar stays hidden** (`IsToolbarVisible`; the toolbar spec,
+  `docs/superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md`). `Toolbar/DocumentToolbar` drives the viewer through
+  its public API only, and every button has an icon from `Toolbar/Icons.axaml` (written by `make-icons.sh`), an
+  accessible name and a tooltip.
 - **Every save goes through `DocumentWindow.SaveToAsync`:** the PdfViewer saves to memory, `MarkupAuthor` writes the
   author, `PdfCompaction` gives an unsigned PDF a full save (spec §6.4), and `AtomicFile` replaces the file. The
   PdfViewer's `AllowDocumentSaving` stays off (spec §16 Decision 1).

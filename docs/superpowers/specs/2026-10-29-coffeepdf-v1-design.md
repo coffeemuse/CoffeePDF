@@ -130,7 +130,7 @@ It uses .NET 10, Avalonia 12.1 (matching the Helper), and `Avalonia.Controls.Pdf
   - `Settings/`: the preferences (§5) and Open Recent.
 - **`CoffeePdf/`** is the Avalonia app:
   - document windows hosting the PdfViewer;
-  - the menu bar, with its Healdan menu, and the toolbar;
+  - the menu bar, with its Healdan menu, and CoffeePDF's own toolbar (`2026-11-05-coffeepdf-toolbar-design.md`);
   - Preferences;
   - the platform hooks: open-file events, the `.pdf` document type, and becoming the default PDF app.
 - **`CoffeePdf.Core.Tests/`:** xUnit, against the fake Helper (§9).
