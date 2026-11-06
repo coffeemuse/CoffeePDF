@@ -68,6 +68,12 @@ jobs:
             exit 1
           fi
 
+      # The personal-details check both hooks run, on made-up details, including THIRD-PARTY-NOTICES.md's one exception.
+      # The same on every runner, so only the Ubuntu leg runs it.
+      - name: Test the personal-details hook
+        if: matrix.runner == 'ubuntu-24.04'
+        run: python3 -I .githooks/test_check_personal_details.py
+
       # Secrets can't be tested in an if:, so this reads the key through env:, and never prints it. A warning, not a
       # failure: a pull request without secrets must still pass.
       - name: Check for the licence key

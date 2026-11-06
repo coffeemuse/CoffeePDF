@@ -514,6 +514,7 @@ what was planned. This is what the build showed, and what it changed.
   - One exception (owner, 2026-11-05): `THIRD-PARTY-NOTICES.md` keeps other projects' notices word for word, and two
     credits in them (FreeType's and ICU's) begin with the account name. In that file only, the hook lets the account
     name stand where one of those surnames, which it lists, follows it. The rest of the file is checked as before.
+    `.githooks/test_check_personal_details.py`, which CI runs, shows that on made-up details.
   - Tests save with the made-up author `Test Reviewer`, which `Headless` sets before the app starts.
   - CI masks the Developer ID identity in its logs.
 - **Check 12b, a password-protected PDF (the owner's checks, 2026-10-30).** Its markups saved without an author, for

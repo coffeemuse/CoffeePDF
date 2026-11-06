@@ -21,6 +21,7 @@ You need the .NET 10 SDK (`global.json` pins it). The PdfViewer needs the Avalon
 
 ```bash
 dotnet test CoffeePdf.sln                                    # everything; the PdfViewer's tests skip without the key
+python3 -I .githooks/test_check_personal_details.py          # the personal-details hook's tests, on made-up details
 COFFEEPDF_PROBES=1 dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find; the variable runs the heavy ones
 dotnet run --project CoffeePdf -- <file.pdf>                 # the app
 packaging/mac/package.sh 1.2.3                               # CoffeePDF.app and its .dmg, on a Mac
@@ -33,7 +34,8 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 - **Personal details stay out of the repository**, including PDFs' markup authors, which default to the macOS full name.
   - Run `git config core.hooksPath .githooks` once per clone. The hook rejects any PDF, and any change that holds the
     account's full name, account name or home folder. Its one exception: in `THIRD-PARTY-NOTICES.md`, two credits in
-    other projects' notices begin with the account name, and the hook lists their surnames.
+    other projects' notices begin with the account name, and the hook lists their surnames. Its tests show the
+    exception lets those two through and nothing else.
   - Tests save with the made-up author `Test Reviewer`, and anything recording a name describes it instead of quoting it.
 - **Avalonia's macOS library is patched, TEMPORARILY** (AvaloniaUI/Avalonia#22285, CoffeePDF's issue #9). The app ships
   `packaging/avalonia-native/libAvaloniaNative.dylib` in place of the package's, and the build stops when Avalonia isn't
