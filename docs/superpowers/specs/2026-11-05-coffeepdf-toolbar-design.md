@@ -3,7 +3,8 @@
 - **Date:** 2026-11-05
 - **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-05, and the owner approved
   this written spec the same day. Built on 2026-11-05
-  (`docs/superpowers/plans/2026-11-05-coffeepdf-toolbar.md`). The owner's checks on the Mac are next (§7). Fluent's
+  (`docs/superpowers/plans/2026-11-05-coffeepdf-toolbar.md`). The owner's checks on the Mac (§7) passed on 2026-11-06,
+  check 1 after a fix and check 6 after a change of design (§10). Fluent's
   notice is in `THIRD-PARTY-NOTICES.md`, added on 2026-11-06 once coffeemuse/CoffeePDF#16 had created it (§8, §10).
 - **Related:** the v1 spec (`2026-10-29-coffeepdf-v1-design.md`), its §4.3 (the app's parts), §6.1 (a window's mode),
   §8 (testing) and §16 Decision 1 (CoffeePDF does what the PdfViewer can't); `docs/ROADMAP.md`.
@@ -370,3 +371,8 @@ What this design rests on, and what the probes and the build find. The probes' a
     selected or being edited. Restyling a selection is the right-click menu's. Both limits are worth reporting to
     Avalonia, and the toolbar can restyle a selection once a PdfViewer allows it (the roadmap's backlog). A shape just
     drawn is selected, so its tool's menus hide until the selection ends.
+- **The owner's checks 6 to 11 (2026-11-06, on 1.1.0-toolbar.5) passed:** the format menus styling what each tool
+  makes and hiding while markup is selected, with the right-click menu restyling it; the swatches under the pointer;
+  stamps' labels, styles and date; search, its count and options, and ⌘F; a Healdan read-only copy with no tools; and
+  VoiceOver reading each button and skipping the collapsed tools. Checks 2 to 5 passed on 1.1.0-toolbar.3, and check 1
+  on 1.1.0-toolbar.4 after its fix.

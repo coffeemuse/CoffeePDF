@@ -48,7 +48,7 @@
 
 | Piece | What | Status |
 |---|---|---|
-| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05; built on that date ([plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md)); Fluent's notice added to `THIRD-PARTY-NOTICES.md` 2026-11-06, after #16 merged; the owner's checks on the Mac under way (2026-11-06): 1 to 5 passed, check 1's swatch fixed, and check 6 found that the PdfViewer can't restyle a selection from outside it, so the format menus hide while markup is selected (the spec's §10) |
+| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05; built on that date ([plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md)); Fluent's notice added to `THIRD-PARTY-NOTICES.md` 2026-11-06, after #16 merged; the owner's checks on the Mac passed 2026-11-06 on the test build 1.1.0-toolbar.5, check 1 after a fix (the colour swatch) and check 6 after a change: the PdfViewer can't restyle a selection from outside it, so the format menus hide while markup is selected (the spec's §10) |
 
 ## v2
 
