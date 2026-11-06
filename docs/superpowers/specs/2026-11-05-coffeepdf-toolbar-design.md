@@ -292,12 +292,14 @@ What this design rests on, and what the probes and the build find. The probes' a
   white and stroke black at width 2, no stamp colour, zoom 0.05 to 5. Setting `SearchQuery` to "fixture" searched by
   itself: one result at index 0 (zero-based), `FindNext` stayed at 0 (one result), and `ClearSearch` gave an empty query,
   no results and index -1. So `SearchCountText` in Task 4 counts from `index + 1`, and shows nothing at -1.
-- **The build (observed 2026-11-05).** The window's `MinWidth` is 790, measured headless with Avalonia's headless
+- **The build (observed 2026-11-05).** The window's `MinWidth` is 800, measured headless with Avalonia's headless
   fonts, not the Mac's. The page count keeps the room "of 9999" takes, so the minimum holds for documents of up to
-  9,999 pages. With that room kept and the Text tool armed (its three format menus are the widest), a sweep of widths
-  fitted everything down to 781 and failed at 780, where the format menus, which never overflow, ran a point into the
-  search box; a 1-page and a 1,000-page document gave the same. The first measure, 760, didn't keep the count's room,
-  and a 1,000-page document overran it by 21 points (the final review's I3). The owner's resizing check on the Mac
+  9,999 pages. With that room kept and the Text tool armed (its three format menus are the widest, and never
+  overflow), a sweep of widths kept the format menus clear of the search box down to 781, for a 1-page and a
+  1,000-page document alike. But below 793 they ran past the tools' own column, which the panel draws past its edge,
+  into the row's margin, so the minimum-width tests now ask for the column too: 793 passes and 792 fails. The first
+  measure, 760, didn't keep the count's room, and a 1,000-page document overran it by 21 points (the final review's
+  I3). The owner's resizing check on the Mac
   (§7) is what confirms it there.
   After the final review's fix wave, the keyed run passed 176 core tests and 232 app tests, and skipped two probes:
   the core's `PdfCompactionProbe`, which skips by itself, and the app's keyless probe. The keyless run passed 176 core

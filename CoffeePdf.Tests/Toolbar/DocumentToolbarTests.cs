@@ -1199,17 +1199,22 @@ public sealed class DocumentToolbarTests : IDisposable
     {
         var path = Fixture();
 
-        var (formatEnd, rightStart, shown) = await Headless.RunAsync(async () =>
+        var (formatEnd, toolsEnd, rightStart, shown) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
             window.Width = window.MinWidth;
             window.Toolbar.Arm(PdfViewerTool.Text);
-            await TestWindows.WaitForAsync(() => window.Toolbar.FormatGroup.IsEffectivelyVisible && window.Toolbar.FormatGroup.Bounds.Width > 0);
+            await TestWindows.WaitForAsync(() => window.Toolbar.Bounds.Width <= window.MinWidth
+                && window.Toolbar.FormatGroup.IsEffectivelyVisible && window.Toolbar.FormatGroup.Bounds.Width > 0);
             var t = window.Toolbar;
             double X(Control c, double at) => c.TranslatePoint(new Avalonia.Point(at, 0), t)!.Value.X;
-            return (X(t.FormatGroup, t.FormatGroup.Bounds.Width), X(t.RightGroup, 0), t.TextButton.IsEffectivelyVisible);
+            return (X(t.FormatGroup, t.FormatGroup.Bounds.Width), X(t.Tools, t.Tools.Bounds.Width), X(t.RightGroup, 0),
+                t.TextButton.IsEffectivelyVisible);
         });
 
+        // Inside the tools' own column, so the row keeps its margin before the search box: the panel draws a child that
+        // doesn't fit past its own edge.
+        Assert.True(formatEnd <= toolsEnd, $"The format menus end at {formatEnd}, past the tools' column's end at {toolsEnd}");
         Assert.True(formatEnd <= rightStart, $"The format menus end at {formatEnd}, past the right group's start at {rightStart}");
         Assert.True(shown);
     }
@@ -1221,7 +1226,7 @@ public sealed class DocumentToolbarTests : IDisposable
         // Format button ran over the search box.
         var path = Fixture(pages: 1000);
 
-        var (leftEnd, toolsStart, formatEnd, rightStart, rightEnd, width, shown) = await Headless.RunAsync(async () =>
+        var (leftEnd, toolsStart, formatEnd, toolsEnd, rightStart, rightEnd, width, shown) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
             var t = window.Toolbar;
@@ -1231,10 +1236,12 @@ public sealed class DocumentToolbarTests : IDisposable
                 && t.FormatGroup.IsEffectivelyVisible && t.FormatGroup.Bounds.Width > 0);
             double X(Control c, double at) => c.TranslatePoint(new Point(at, 0), t)!.Value.X;
             return (X(t.LeftGroup, t.LeftGroup.Bounds.Width), X(t.Tools, 0), X(t.FormatGroup, t.FormatGroup.Bounds.Width),
-                X(t.RightGroup, 0), X(t.RightGroup, t.RightGroup.Bounds.Width), t.Bounds.Width, t.TextButton.IsEffectivelyVisible);
+                X(t.Tools, t.Tools.Bounds.Width), X(t.RightGroup, 0), X(t.RightGroup, t.RightGroup.Bounds.Width), t.Bounds.Width,
+                t.TextButton.IsEffectivelyVisible);
         });
 
         Assert.True(leftEnd <= toolsStart, $"The left group ends at {leftEnd}, past the tools' start at {toolsStart}");
+        Assert.True(formatEnd <= toolsEnd, $"The format menus end at {formatEnd}, past the tools' column's end at {toolsEnd}");
         Assert.True(formatEnd <= rightStart, $"The format menus end at {formatEnd}, past the right group's start at {rightStart}");
         Assert.True(rightEnd <= width, $"The right group ends at {rightEnd}, past the toolbar's width {width}");
         Assert.True(shown);
