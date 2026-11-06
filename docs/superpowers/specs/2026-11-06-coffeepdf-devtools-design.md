@@ -1,8 +1,9 @@
 # Developer tools in CoffeePDF's test builds
 
 - **Date:** 2026-11-06
-- **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-06. Awaiting the owner's
-  review of this written spec. The implementation plan follows in `docs/superpowers/plans/`.
+- **Status:** agreed with the owner section by section in a brainstorming session on 2026-11-06, and the owner
+  approved this written spec the same day. The implementation plan is
+  `docs/superpowers/plans/2026-11-06-coffeepdf-devtools.md`.
 - **Related:** the v1 spec (`2026-10-29-coffeepdf-v1-design.md`), its §8 (testing), §10 (CI and releases) and §12
   (the third-party notices); the toolbar spec (`2026-11-05-coffeepdf-toolbar-design.md`, on the toolbar's branch,
   coffeemuse/CoffeePDF#17); `packaging/mac/package.sh` and `packaging/mac/check-notices.py`.
@@ -172,6 +173,8 @@ them (§5).
 1. **Build** the test package with `COFFEEPDF_DEVTOOLS=1` and the licence key, such as
    `COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh 1.1.0-toolbar.5`.
 2. **Launch it walled off,** as `Headless` walls off the tests:
+   - First, any other CoffeePDF is quit. The test build has the same bundle identifier, which computer use and the Dock
+     go by (found while planning).
    - Claude starts the bundle's binary directly (`CoffeePDF.app/Contents/MacOS/CoffeePDF <file.pdf>`), not through
      `open`, which would let LaunchServices hand the file to a running CoffeePDF with the same bundle identifier.
    - `COFFEEPDF_SETTINGS_DIR`, `COFFEEPDF_LOG_DIR` and `HEALDAN_HELPER_DEV_ROOT` point at folders in Claude's
@@ -232,8 +235,8 @@ Once the build and the package work, the toolbar's bug is the test of the whole 
 3. Claude does the same on the toolbar's fixed commit, where both should pass.
 4. The same run records:
    - whether computer use's background clicks reach CoffeePDF without bringing it to the front;
-   - what the developer tools cost at launch, in the time to the first window and in memory, beside a build without
-     them, so that the owner's checks on a test build aren't skewed.
+   - what the developer tools cost at launch, in the CPU time to the first window and in memory, beside a build
+     without them, so that the owner's checks on a test build aren't skewed.
 5. The findings go in §10.
 
 The outcome sets the pass:
