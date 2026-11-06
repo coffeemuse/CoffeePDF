@@ -70,8 +70,9 @@ One row under the title bar, below the Healdan bar when that shows:
   | Text, or a selected text box | Colour (fill, border and text), Line, Text | `TextAnnotationFillColor`, `TextAnnotationStrokeColor`, `TextAnnotationTextColor`, `TextAnnotationStrokeWidth`, `TextAnnotationFont`, `TextAnnotationFontSize`, `TextAnnotationFontAttributes`, `TextAnnotationTextAlign` |
   | Link, or no tool | none | |
 
-  - **Colour:** a row of swatches, No Colour (for a fill), and a typed hex colour. Shapes and text boxes have a tab for
-    each colour they carry.
+  - **Colour:** a row of swatches, No Colour (for a fill, a border or a stroke), and a typed hex colour. A stamp's none
+    is Label's Colour, which leaves each label its own colour. Shapes and text boxes have a tab for each colour they
+    carry.
   - **Line:** the width, 0.5 to 20 points (the viewer's own range), with a preview.
   - **Text:** font, size, bold, italic, underline, and left, centre or right alignment.
   - While a shape or text box is selected, the viewer shows and edits its style through those same properties, and puts
@@ -94,10 +95,12 @@ One row under the title bar, below the Healdan bar when that shows:
 - **One control.** `CoffeePdf/Toolbar/DocumentToolbar.axaml` holds the row. The window hands it its PdfViewer when the
   window is built, and the toolbar touches the viewer only through public API.
   - **It reads** the viewer's properties as they change: `ActiveTool`, `SelectedShapeType`, `CurrentPage`,
-    `PageCount`, `ZoomLevel`, `ZoomMode`, `SearchResultCount`, `CurrentSearchResultIndex`, `SidebarMode`,
-    `CanEditAnnotations` and `HasDocument`, and the format properties of §3's table. It reads the viewer's
-    `:shape-selected` and `:editing-text` states, which the viewer documents for host styles, to show the format menus
-    for a selection.
+    `PageCount`, `ZoomLevel`, `SearchResultCount`, `CurrentSearchResultIndex`, `SidebarMode`, `CanEditAnnotations` and
+    `HasDocument`, and the colours of §3's table, which the Colour button's swatch shows (the viewer loads a selection's
+    colours after its state shows). It reads the viewer's `:shape-selected` and `:editing-text` states, which the
+    viewer documents for host styles, as they come and go, to show the format menus for a selection. The rest of the
+    format properties, `StampLabels`, `StampStyle`, `IncludeStampDate`, `SearchMatchCase` and `SearchMatchWholeWord` it
+    reads as their menus open.
   - **It sets** `ActiveTool`, `SelectedShapeType`, the format properties, `StampLabels`, `StampStyle`,
     `IncludeStampDate`, `CurrentPage`, `ZoomLevel` and `ZoomMode`, `SearchQuery`, `SearchMatchCase`,
     `SearchMatchWholeWord` and `SidebarMode`, and calls `FindNext` and `FindPrevious`.
@@ -113,9 +116,12 @@ One row under the title bar, below the Healdan bar when that shows:
   - Edit gets Find… (⌘F), which puts the cursor in the toolbar's search box. Find Next and Find Previous stay as they are.
   - Undo and Redo already act on a focused text box first (the owner's check 10), so the search, page and zoom boxes
     keep their own ⌘Z.
-- **Overflow.** The tools sit in the viewer's `OverflowToolbarPanel`, which is public (§10). The format menus are marked
-  `IsPinned`, so they stay while tools collapse. The "more" menu is rebuilt from `OverflowedChildren` whenever
-  `OverflowChanged` fires, and its items act on the buttons they stand for.
+- **Overflow.** The tools sit in the viewer's `OverflowToolbarPanel`, which is public (§10). It takes its whole column
+  and centres the tools in it itself. The format menus are marked `IsPinned`, so they stay while tools collapse. When
+  `OverflowChanged` fires, the toolbar hides each child in `OverflowedChildren`, which the panel leaves drawn, taking
+  clicks and the focus (it can't be made invisible, or the panel stops counting it), shows the rest, shows the "more"
+  button only while something has overflowed, and rebuilds the "more" menu, whose items act on the buttons they stand
+  for. The menu is rebuilt as it opens too, so its stamp checks are current.
 - **Icons.** `CoffeePdf/Toolbar/Icons.axaml` is a resource dictionary of the shapes the toolbar uses, each under a name.
   `App.axaml` includes it, and the buttons draw them with `PathIcon`, which takes its colour from the theme.
 - **Where the logic lives.** `CoffeePdf.Core` can't reference the PdfViewer's types, such as `PdfViewerTool`. So the
@@ -132,7 +138,8 @@ One row under the title bar, below the Healdan bar when that shows:
 - **Moving to Healdan's new copy (v1 spec §6.6).** The window sets `DocumentPanel.IsEnabled = false`, which takes the
   toolbar with it.
 - **Typed values.** A typed zoom ("135%" or "135") is clamped to `MinZoom` and `MaxZoom`, and a typed page to 1 to
-  `PageCount`. Anything else puts back the value shown before.
+  `PageCount`. Anything else puts back the value shown before. A box follows the viewer, focused or not, until the
+  person types in it, and leaving it commits only what was typed.
 - **Light and dark.** The icons and controls take their colours from the Fluent theme's resources, so they follow the
   Mac's appearance, as the menus do.
 - **The markup author.** Nothing changes. The toolbar arms the same tools as the Tools menu, and
@@ -285,21 +292,42 @@ What this design rests on, and what the probes and the build find. The probes' a
   white and stroke black at width 2, no stamp colour, zoom 0.05 to 5. Setting `SearchQuery` to "fixture" searched by
   itself: one result at index 0 (zero-based), `FindNext` stayed at 0 (one result), and `ClearSearch` gave an empty query,
   no results and index -1. So `SearchCountText` in Task 4 counts from `index + 1`, and shows nothing at -1.
-- **The build (observed 2026-11-05).** The window's `MinWidth` is 760, measured headless with Avalonia's headless
-  fonts, not the Mac's: 740 failed, because the More button and the pinned format group need about 176 points. The
-  owner's resizing check confirms it. The keyed run passed all but the keyless probe, which skips: 176 core tests (1
-  skipped, a probe) and 217 app tests (1 skipped). The keyless run passed 176 core tests and 70 app tests, and skipped
-  148 that need the PdfViewer.
+- **The build (observed 2026-11-05).** The window's `MinWidth` is 790, measured headless with Avalonia's headless
+  fonts, not the Mac's. The page count keeps the room "of 9999" takes, so the minimum holds for documents of up to
+  9,999 pages. With that room kept and the Text tool armed (its three format menus are the widest), a sweep of widths
+  fitted everything down to 781 and failed at 780, where the format menus, which never overflow, ran a point into the
+  search box; a 1-page and a 1,000-page document gave the same. The first measure, 760, didn't keep the count's room,
+  and a 1,000-page document overran it by 21 points (the final review's I3). The owner's resizing check on the Mac
+  (§7) is what confirms it there.
+  After the final review's fix wave, the keyed run passed 176 core tests and 232 app tests, and skipped two probes:
+  the core's `PdfCompactionProbe`, which skips by itself, and the app's keyless probe. The keyless run passed 176 core
+  tests and 70 app tests, and skipped the same core probe and 163 app tests that need the PdfViewer.
+  What the final review found, and the fix wave fixed, each with a test that failed first:
+  - C1: the panel arranges a child it moves off the row in an empty rect but leaves it drawn, taking clicks and the
+    focus, and read by VoiceOver. Shapes and Stamp kept their split buttons' 32-point minimum height there and sat over
+    Highlight's top half, so a click there armed Stamp. The toolbar now makes each overflowed child see-through, takes
+    its clicks and focus away and drops it from the accessibility tree, and does the same to More while nothing has
+    overflowed.
+  - C2: the panel was centred in its column, so it was only ever given its desired width, and once More had shown it
+    kept room for More there, so Stamp never came back. The panel now takes its whole column and centres the tools
+    itself.
+  - I1: the page and zoom boxes compared their text with the viewer's current page or zoom, and a focused box didn't
+    follow the viewer, so a scroll, ⌘+ or a fit mode's re-fit while a box had the focus was undone when the focus left.
+  - I2: the viewer resets `SelectedShapeType` when its tool is disarmed, so the Shapes button armed a rectangle
+    whatever was chosen last. The toolbar remembers the shape.
+  - Probe 4's indicator "off the row (at 0,-15)" was half on the row, not off it: a child in an empty rect keeps its
+    minimum size, centred on the panel's corner, which is C1.
   What the build changed from the plan because a probe or a test said so:
   - `Selection()` reads only `:editing-text` and `:shape-selected`, not `SelectedShapeType` (probe 5).
   - A colour chosen from a swatch or typed keeps the slot's opacity, as the default highlight is at half opacity
     (probe 6).
-  - The page and zoom boxes commit only changed text, and Return gives focus back to the page, so a blur or Escape
+  - The page and zoom boxes commit only what was typed, and Return gives focus back to the page, so a blur or Escape
     doesn't turn Fit into a manual zoom.
-  - A Stamp label is chosen on a click over it, so the label shown as current can be chosen too.
+  - A Stamp label is chosen on a click over it, so the label shown as current can be chosen too, or on Return or
+    Space. Moving the selection with the arrow keys doesn't choose (the final review).
   - There are 24 icons, not 26: Colour and Dismiss were unused.
-  - Named flyouts (Zoom, Stamp, More) are reached through their buttons' `Flyout`, as the compiler makes no field for
-    them.
+  - Named flyouts (Zoom, Shapes, Stamp, More) are reached through their buttons' `Flyout`, as the compiler makes no
+    field for them.
   - The test helpers move the pointer before a click, flush input around typing, wait for a settled page, and re-drag
     when headless input drops a drag (probe 5).
   The limits: a highlight already on the page can't be recoloured from the toolbar (probe 2). A selected text box
