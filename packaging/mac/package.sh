@@ -19,7 +19,8 @@
 #
 # The steps, as the Healdan Helper's: a self-contained, single-file .NET publish for osx-arm64 with no .pdb, since any
 # file in Contents/MacOS that isn't native code breaks the bundle's signature; the bundle, with the icon make-icon.sh
-# made; signing inside-out (each native library, the binary, then the bundle), with the hardened runtime and a
+# made and the third-party notices (THIRD-PARTY-NOTICES.md) in Contents/Resources; signing inside-out (each native
+# library, the binary, then the bundle), with the hardened runtime and a
 # timestamp when there's an identity; codesign's strict check; notarising and stapling; the disk image, with a link to
 # Applications, signed (and notarised) too. Any failure stops it.
 set -euo pipefail
@@ -40,6 +41,9 @@ done
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 [ -f "$here/CoffeePDF.icns" ] || die "packaging/mac/CoffeePDF.icns is missing: make-icon.sh makes it"
+# The licences of what the app carries ask for their notices to go with it.
+notices="$repo/THIRD-PARTY-NOTICES.md"
+[ -s "$notices" ] || die "THIRD-PARTY-NOTICES.md is missing or empty at the repository's root, and the app must carry it"
 out=${OUT_DIR:-"$here/out"}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -117,6 +121,13 @@ lipo "$work/publish/libcoffeepdfium.dylib" -verify_arch arm64 2>/dev/null ||
 # It goes when the patch does (packaging/avalonia-native/README.md).
 cmp -s "$work/publish/libAvaloniaNative.dylib" "$repo/packaging/avalonia-native/libAvaloniaNative.dylib" ||
   die "the publish's libAvaloniaNative.dylib isn't the patched one in packaging/avalonia-native"
+# THIRD-PARTY-NOTICES.md names each native library in its section, so this stops a package with a library whose
+# notices nobody added.
+for library in "$work/publish"/*.dylib; do
+  [ -e "$library" ] || continue
+  grep -qF "\`$(basename "$library")\`" "$notices" ||
+    die "the publish has $(basename "$library"), which THIRD-PARTY-NOTICES.md doesn't name: add its component's section"
+done
 
 say "Building $app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -131,11 +142,16 @@ for library in "$app/Contents/MacOS"/*.dylib; do
 done
 chmod 755 "$app/Contents/MacOS"/*
 cp "$here/CoffeePDF.icns" "$app/Contents/Resources/"
+# The notices go in Resources, never MacOS, which holds only native code.
+cp "$notices" "$app/Contents/Resources/"
 sed -e "s/@VERSION@/$numeric/g" "$here/Info.plist.in" > "$app/Contents/Info.plist"
 ! grep -q '@[A-Z_]*@' "$app/Contents/Info.plist" || die "Info.plist.in has a placeholder package.sh doesn't fill"
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 printf 'APPL????' > "$app/Contents/PkgInfo"
-chmod 644 "$app/Contents/Info.plist" "$app/Contents/PkgInfo" "$app/Contents/Resources/CoffeePDF.icns"
+chmod 644 "$app/Contents/Info.plist" "$app/Contents/PkgInfo" "$app/Contents/Resources/CoffeePDF.icns" \
+  "$app/Contents/Resources/THIRD-PARTY-NOTICES.md"
+cmp -s "$notices" "$app/Contents/Resources/THIRD-PARTY-NOTICES.md" ||
+  die "the bundle's Contents/Resources has no THIRD-PARTY-NOTICES.md, or one that isn't the repository's"
 xattr -cr "$app" 2>/dev/null || true # Finder info or a resource fork would make codesign refuse it
 
 # --- Signing, inside out --------------------------------------------------------------------------------------------

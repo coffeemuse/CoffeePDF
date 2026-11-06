@@ -349,6 +349,7 @@ The channel has no machine-readable contract the way the API's `openapi.yaml` is
 - **For now:** the repository is private and the code proprietary.
 - **The intent is MIT,** reconsidered if later dependencies need it. The owner settles it before the repository goes public, once the app works fully and its dependencies are settled.
 - **Signed builds:** the owner distributes signed, notarised builds. Anyone who later builds from source needs their own Avalonia licence that covers the PdfViewer.
+- **Third-party notices:** `THIRD-PARTY-NOTICES.md`, at the repository's root, has a section for each third-party component the app carries: its version, its licence and its notice, copied from the package or its upstream repository. They are the .NET runtime, Avalonia (with the patched macOS library), MicroCom.Runtime, Tmds.DBus.Protocol, SkiaSharp, HarfBuzzSharp and PDFium (both copies, with the projects PDFium builds in). The PdfViewer and AvaloniaUI.Licensing are commercial, and Avalonia's terms ask for no notice, which their sections say. `package.sh` copies the file to the app's `Contents/Resources`, and stops if it's missing or doesn't name a native library the app carries. A change that adds a component adds its section (added 2026-11-05, after v1.0.0, which shipped without it).
 
 ## 13. Build phases
 
@@ -510,6 +511,9 @@ what was planned. This is what the build showed, and what it changed.
   - `.githooks/pre-commit` refuses any PDF, and any change holding the account's full name, account name or home folder,
     in UTF-8, UTF-16, Latin-1 or hex. The hooks also check commit messages (`.githooks/commit-msg`), and refuse any PDF
     by its content, whatever its name; a file they can't read refuses the commit.
+  - One exception (owner, 2026-11-05): `THIRD-PARTY-NOTICES.md` keeps other projects' notices word for word, and two
+    credits in them (FreeType's and ICU's) begin with the account name. In that file only, the hook lets the account
+    name stand where one of those surnames, which it lists, follows it. The rest of the file is checked as before.
   - Tests save with the made-up author `Test Reviewer`, which `Headless` sets before the app starts.
   - CI masks the Developer ID identity in its logs.
 - **Check 12b, a password-protected PDF (the owner's checks, 2026-10-30).** Its markups saved without an author, for

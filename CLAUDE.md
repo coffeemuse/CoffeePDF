@@ -32,7 +32,8 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 - **The licence key** is never committed, logged or printed. `AvaloniaLicense.props` reads it from the environment.
 - **Personal details stay out of the repository**, including PDFs' markup authors, which default to the macOS full name.
   - Run `git config core.hooksPath .githooks` once per clone. The hook rejects any PDF, and any change that holds the
-    account's full name, account name or home folder.
+    account's full name, account name or home folder. Its one exception: in `THIRD-PARTY-NOTICES.md`, two credits in
+    other projects' notices begin with the account name, and the hook lists their surnames.
   - Tests save with the made-up author `Test Reviewer`, and anything recording a name describes it instead of quoting it.
 - **Avalonia's macOS library is patched, TEMPORARILY** (AvaloniaUI/Avalonia#22285, CoffeePDF's issue #9). The app ships
   `packaging/avalonia-native/libAvaloniaNative.dylib` in place of the package's, and the build stops when Avalonia isn't
@@ -60,4 +61,7 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
   the run's own, and the flows' tests give each window a `FakeHelper`'s link.
 - **Nothing logs the channel's secret or a file's contents** (`CoffeeLog`). Log an exception by its type.
 - **Packaging:** only native code may sit in the bundle's `Contents/MacOS`, which `package.sh` checks.
+- **Third-party notices:** a change that adds a component to the app, or changes one's version, updates its section
+  in `THIRD-PARTY-NOTICES.md`, with the notice copied from the package or its upstream repository, never retyped.
+  `package.sh` puts the file in `Contents/Resources`, and stops without it or when it doesn't name a native library.
 - **Pushes go through the owner.** Never push, tag or open a pull request without the owner's go-ahead.

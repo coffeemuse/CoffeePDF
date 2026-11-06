@@ -102,7 +102,9 @@ Remove it once an Avalonia release fixes Avalonia#22285. Watch the issue and Ava
 3. Delete the `Import` of `AvaloniaNative.targets`, and its comment, from `CoffeePdf/CoffeePdf.csproj`.
 4. Delete the `libAvaloniaNative.dylib` check from `packaging/mac/package.sh`.
 5. Delete the rule in `CLAUDE.md` and the line in `docs/ROADMAP.md`'s backlog. Record the removal in the spec: §4.3's
-   `packaging/avalonia-native/` line goes, and §16's entry for issue #9 says which release fixed it.
+   `packaging/avalonia-native/` line goes, and §16's entry for issue #9 says which release fixed it. In
+   `THIRD-PARTY-NOTICES.md`, Avalonia's row and section take the new version, with `libAvaloniaNative.dylib` the
+   package's own.
 6. `git grep -n 22285` should then find only that record.
 7. Check on the Mac, with `dotnet run --project CoffeePdf -- <file.pdf>`, that the upstream fix works. Avalonia may not
    have taken this patch as it is.

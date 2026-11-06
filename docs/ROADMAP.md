@@ -28,6 +28,10 @@
     2026-10-31. Removing it is in the backlog.
   - The two checks that need Acrobat are best effort, in
     [issue #3](https://github.com/coffeemuse/CoffeePDF/issues/3), and hold no phase.
+  - The third-party notices are in `THIRD-PARTY-NOTICES.md` (2026-11-05, the spec's §12): each component the app
+    carries, with its version, its licence and its notice. `package.sh` puts the file in the app's
+    `Contents/Resources`, and stops without it. `v1.0.0` shipped without them, so the next release is the first to
+    carry them.
 
 ## v1: read and mark up
 

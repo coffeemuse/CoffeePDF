@@ -85,6 +85,23 @@ def details_in(data, details):
     return " and ".join(found)
 
 
+# THIRD-PARTY-NOTICES.md keeps other projects' notices word for word, and two of them credit people whose first name is
+# a common account name: FreeType's licence and ICU's (its Lao dictionary). In that file only, the account name doesn't
+# count where one of these surnames follows it (owner, 2026-11-05). The rest of the file, and every other file, are
+# checked as before.
+NOTICES = b"THIRD-PARTY-NOTICES.md"
+NOTICES_SURNAMES = (rb"Wilhelm", rb"Martin\s+Campbell")
+
+
+def without_credits(data, account):
+    """The notices without the credits that begin with the account name, so the check still sees everything else."""
+    if len(account) <= 1:
+        return data
+    credit = (rb"(?i)(?<![A-Za-z0-9])" + re.escape(account.encode("utf-8")) + rb"\s+(?:" + b"|".join(NOTICES_SURNAMES)
+              + rb")(?![A-Za-z0-9])")
+    return re.sub(credit, b"", data)
+
+
 def check_staged(details):
     """Refuses a PDF, by its name or by its content, and any staged file or file name holding a detail."""
     listing = subprocess.run(
@@ -109,6 +126,8 @@ def check_staged(details):
         if blob.startswith(b"%PDF-"):
             problems.append("%s is a PDF, whatever its name. PDFs aren't committed to CoffeePDF, since a saved one carries its markup author." % name)
             continue
+        if path == NOTICES:
+            blob = without_credits(blob, details[1])
         held = details_in(blob, details)
         if held:
             problems.append("%s contains %s (not shown). Take it out, and stage the file again." % (name, held))
