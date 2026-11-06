@@ -119,8 +119,7 @@ public sealed class DocumentToolbarTests : IDisposable
             window.Viewer.FitWidth();
             await TestWindows.WaitForAsync(() => window.Viewer.ZoomMode == PdfZoomMode.FitWidth);
             var before = window.Viewer.ZoomLevel;
-            window.Toolbar.ZoomBox.Focus();
-            Dispatcher.UIThread.RunJobs();
+            await FocusAsync(window.Toolbar.ZoomBox);
             window.Viewer.FocusViewer();
             Dispatcher.UIThread.RunJobs();
             return (window.Viewer.ZoomMode, before, window.Viewer.ZoomLevel);
@@ -151,26 +150,116 @@ public sealed class DocumentToolbarTests : IDisposable
         Assert.Equal(expected, text);
     }
 
+    /// <summary>
+    /// Puts the focus in <paramref name="box"/> and waits until it stays there. The viewer takes the focus back in a job
+    /// of its own after a fit mode is chosen (as the headless run shows), so a focus given before that job runs is lost.
+    /// </summary>
+    private static Task FocusAsync(TextBox box) => TestWindows.WaitForAsync(() =>
+    {
+        box.Focus();
+        Dispatcher.UIThread.RunJobs();
+        return box.IsKeyboardFocusWithin;
+    });
+
     [PdfViewerFact]
-    public async Task Leaving_the_page_box_without_typing_does_not_move_the_view()
+    public async Task The_page_box_follows_the_viewer_while_focused_and_leaving_it_unedited_keeps_the_page()
+    {
+        // The final review's I1: a focused box didn't follow the viewer, and leaving it committed its stale page, so a
+        // scroll while the box had the focus jumped back when the focus left.
+        var path = Fixture(pages: 3);
+
+        var (focused, shown, pageAfter, textAfter, scrollBefore, scrollAfter) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            await TestWindows.WaitForAsync(() => HasPage(v));
+            var scroller = v.GetVisualDescendants().OfType<Control>().First(c => c.Name == "PART_PagesContainer")
+                .GetVisualAncestors().OfType<ScrollViewer>().First();
+            await FocusAsync(t.PageBox);
+            v.GoToPage(3); // as a scroll would move it
+            await TestWindows.WaitForAsync(() => v.CurrentPage == 3);
+            var (focused, shown, scrollBefore) = (t.PageBox.IsKeyboardFocusWithin, t.PageBox.Text, scroller.Offset.Y);
+            v.FocusViewer();
+            Dispatcher.UIThread.RunJobs();
+            return (focused, shown, v.CurrentPage, t.PageBox.Text, scrollBefore, scroller.Offset.Y);
+        });
+
+        Assert.True(focused, "The page box lost the focus before the viewer moved");
+        Assert.Equal("3", shown);
+        Assert.Equal(3, pageAfter);
+        Assert.Equal("3", textAfter);
+        Assert.Equal(scrollBefore, scrollAfter);
+    }
+
+    [PdfViewerFact]
+    public async Task The_zoom_box_follows_the_viewer_while_focused_and_leaving_it_unedited_keeps_the_zoom()
+    {
+        // I1 again, for the zoom box: ⌘+, a pinch, or a fit mode's re-fit while the box has the focus.
+        var path = Fixture();
+
+        var (focused, shown, level, textAfter) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            await TestWindows.WaitForAsync(() => HasPage(v));
+            await FocusAsync(t.ZoomBox);
+            v.ZoomLevel = 1.5;
+            await TestWindows.WaitForAsync(() => Math.Abs(v.ZoomLevel - 1.5) < 1e-6);
+            var (focused, shown) = (t.ZoomBox.IsKeyboardFocusWithin, t.ZoomBox.Text);
+            v.FocusViewer();
+            Dispatcher.UIThread.RunJobs();
+            return (focused, shown, v.ZoomLevel, t.ZoomBox.Text);
+        });
+
+        Assert.True(focused, "The zoom box lost the focus before the zoom changed");
+        Assert.Equal("150%", shown);
+        Assert.Equal(1.5, level, precision: 6);
+        Assert.Equal("150%", textAfter);
+    }
+
+    [PdfViewerFact]
+    public async Task A_fit_modes_re_fit_while_the_zoom_box_is_focused_keeps_the_fit_mode()
+    {
+        var path = Fixture();
+
+        var (focused, mode, refit, level, text, expected) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            await TestWindows.WaitForAsync(() => HasPage(v));
+            v.FitWidth();
+            await TestWindows.WaitForAsync(() => v.ZoomMode == PdfZoomMode.FitWidth);
+            var before = v.ZoomLevel;
+            await FocusAsync(t.ZoomBox);
+            window.Width += 200; // the viewer re-fits the page to its new width
+            await TestWindows.WaitForAsync(() => Math.Abs(v.ZoomLevel - before) > 0.01);
+            var (focused, refit) = (t.ZoomBox.IsKeyboardFocusWithin, v.ZoomLevel);
+            v.FocusViewer();
+            Dispatcher.UIThread.RunJobs();
+            return (focused, v.ZoomMode, refit, v.ZoomLevel, t.ZoomBox.Text, ToolbarRules.ZoomText(refit));
+        });
+
+        Assert.True(focused, "The zoom box lost the focus before the re-fit");
+        Assert.Equal(PdfZoomMode.FitWidth, mode);
+        Assert.Equal(refit, level);
+        Assert.Equal(expected, text);
+    }
+
+    [PdfViewerFact]
+    public async Task Escape_in_the_page_box_puts_back_the_page()
     {
         var path = Fixture(pages: 3);
 
-        var (pageBefore, pageAfter, scrollBefore, scrollAfter) = await Headless.RunAsync(async () =>
+        var (page, text) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
-            var scroller = window.Viewer.GetVisualDescendants().OfType<Control>().First(c => c.Name == "PART_PagesContainer")
-                .GetVisualAncestors().OfType<ScrollViewer>().First();
-            var (pageBefore, scrollBefore) = (window.Viewer.CurrentPage, scroller.Offset.Y);
-            window.Toolbar.PageBox.Focus();
-            Dispatcher.UIThread.RunJobs();
-            window.Viewer.FocusViewer();
-            Dispatcher.UIThread.RunJobs();
-            return (pageBefore, window.Viewer.CurrentPage, scrollBefore, scroller.Offset.Y);
+            Type(window, window.Toolbar.PageBox, "2", enter: false);
+            Press(window, Key.Escape);
+            return (window.Viewer.CurrentPage, window.Toolbar.PageBox.Text);
         });
 
-        Assert.Equal(pageBefore, pageAfter);
-        Assert.Equal(scrollBefore, scrollAfter);
+        Assert.Equal(1, page);
+        Assert.Equal("1", text);
     }
 
     [PdfViewerFact]

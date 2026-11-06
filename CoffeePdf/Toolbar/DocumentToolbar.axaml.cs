@@ -24,10 +24,14 @@ public partial class DocumentToolbar : UserControl
     private static readonly PdfStampStyle[] StampStyles = Enum.GetValues<PdfStampStyle>();
     private IReadOnlyList<string> _stampLabels = []; // the viewer's labels as they first were, in the menu's order
     private bool _showingStamp;                      // the stamp menu is being set from the viewer, not by a person
+    private readonly HashSet<TextBox> _edited = [];  // the page and zoom boxes typed in since they last showed the viewer
+    private bool _showingBox;                        // a box's text is being set from the viewer, not typed
 
     public DocumentToolbar()
     {
         InitializeComponent();
+        foreach (var box in new[] { PageBox, ZoomBox })
+            box.TextChanging += (_, _) => { if (!_showingBox) _edited.Add(box); }; // TextChanged comes a job later
         StampLabelList.AddHandler(PointerReleasedEvent, OnStampLabelReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         FillZoomMenu();
         foreach (var shape in ToolbarRules.Shapes)
@@ -120,25 +124,44 @@ public partial class DocumentToolbar : UserControl
         ShowSidebar(); // the button flipped itself; the viewer's mode decides what it shows
     }
 
+    // --- The page and zoom boxes ----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Puts the viewer's <paramref name="text"/> in <paramref name="box"/>, which then counts as not typed in. A box follows
+    /// the viewer, focused or not, until the person types in it, and leaving it commits only what was typed: comparing its
+    /// text with the viewer's would commit a stale page or zoom after the viewer moved (the final review's I1).
+    /// </summary>
+    private void ShowText(TextBox box, string text)
+    {
+        _showingBox = true;
+        box.Text = text;
+        _showingBox = false;
+        _edited.Remove(box);
+    }
+
+    /// <summary>Whether <paramref name="box"/> holds what the person is typing, which nothing from the viewer replaces.</summary>
+    private bool Typing(TextBox box) => _edited.Contains(box) && box.IsKeyboardFocusWithin;
+
     // --- The page box -------------------------------------------------------------------------------------------------
+
+    private string PageText => Viewer.HasDocument ? Viewer.CurrentPage.ToString(CultureInfo.InvariantCulture) : "";
 
     private void ShowPage()
     {
         PageCountText.Text = Viewer.HasDocument ? $"of {Viewer.PageCount}" : "";
-        if (!PageBox.IsKeyboardFocusWithin) // never over what's being typed
-            PageBox.Text = Viewer.HasDocument ? Viewer.CurrentPage.ToString(CultureInfo.InvariantCulture) : "";
+        if (!Typing(PageBox))
+            ShowText(PageBox, PageText);
     }
 
     /// <summary>Goes to the typed page, clamped, or puts back the page shown before (spec §5).</summary>
     private void CommitPage()
     {
-        var shown = Viewer.CurrentPage.ToString(CultureInfo.InvariantCulture);
-        if (PageBox.Text == shown)
+        if (!_edited.Contains(PageBox))
             return; // nothing typed: leaving the box must not move the view
         var page = ToolbarRules.ParsePage(PageBox.Text, Viewer.PageCount);
         if (page is { } typed)
             Viewer.GoToPage(typed);
-        PageBox.Text = (page ?? Viewer.CurrentPage).ToString(CultureInfo.InvariantCulture);
+        ShowText(PageBox, (page ?? Viewer.CurrentPage).ToString(CultureInfo.InvariantCulture));
     }
 
     /// <summary>Return: commits, then hands focus back to the viewer, so the box follows it again (as Preview does).</summary>
@@ -154,7 +177,7 @@ public partial class DocumentToolbar : UserControl
             EnterPage();
         else if (e.Key == Key.Escape)
         {
-            PageBox.Text = Viewer.CurrentPage.ToString(CultureInfo.InvariantCulture); // so LostFocus commits nothing new
+            ShowText(PageBox, PageText); // so LostFocus commits nothing
             Viewer.FocusViewer();
         }
         else
@@ -170,10 +193,12 @@ public partial class DocumentToolbar : UserControl
 
     // --- The zoom box and its menu --------------------------------------------------------------------------------------
 
+    private string ZoomText => Viewer.HasDocument ? ToolbarRules.ZoomText(Viewer.ZoomLevel) : "";
+
     private void ShowZoom()
     {
-        if (!ZoomBox.IsKeyboardFocusWithin)
-            ZoomBox.Text = Viewer.HasDocument ? ToolbarRules.ZoomText(Viewer.ZoomLevel) : "";
+        if (!Typing(ZoomBox))
+            ShowText(ZoomBox, ZoomText);
     }
 
     private void SetZoom(double level)
@@ -185,11 +210,11 @@ public partial class DocumentToolbar : UserControl
     /// <summary>Sets the typed zoom, clamped, or puts back the zoom shown before (spec §5).</summary>
     private void CommitZoom()
     {
-        if (ZoomBox.Text == ToolbarRules.ZoomText(Viewer.ZoomLevel))
+        if (!_edited.Contains(ZoomBox))
             return; // nothing typed: leaving the box must not swap a fit mode for a manual zoom
         if (ToolbarRules.ParseZoom(ZoomBox.Text, Viewer.MinZoom, Viewer.MaxZoom) is { } level)
             SetZoom(level);
-        ZoomBox.Text = ToolbarRules.ZoomText(Viewer.ZoomLevel);
+        ShowText(ZoomBox, ZoomText);
     }
 
     private void OnZoomKeyDown(object? sender, KeyEventArgs e)
@@ -201,7 +226,7 @@ public partial class DocumentToolbar : UserControl
         }
         else if (e.Key == Key.Escape)
         {
-            ZoomBox.Text = ToolbarRules.ZoomText(Viewer.ZoomLevel); // so LostFocus commits nothing new
+            ShowText(ZoomBox, ZoomText); // so LostFocus commits nothing
             Viewer.FocusViewer();
         }
         else
