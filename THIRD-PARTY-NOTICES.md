@@ -31,6 +31,7 @@ the app, as `CoffeePDF.app/Contents/Resources/THIRD-PARTY-NOTICES.md`. It stops 
 | [PDFium](#pdfium) | 157.0.8086 | BSD 3-clause and Apache 2.0, with its third-party notices | `libpdfium.dylib` and `libcoffeepdfium.dylib` |
 | [Avalonia.Controls.PdfViewer](#avaloniacontrolspdfviewer) | 12.0.1 | commercial (Avalonia Pro): no notice needed | inside the binary |
 | [AvaloniaUI.Licensing](#avaloniauilicensing) | 3.1.3 | commercial (Avalonia Pro): no notice needed | inside the binary |
+| [Fluent UI System Icons](#fluent-ui-system-icons) | 1.1.344 | MIT | inside the binary, as the toolbar's icons |
 
 ## .NET runtime
 
@@ -7355,3 +7356,41 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 - **In the app:** `AvaloniaUI.Licensing.dll`, inside the binary. CoffeePDF references it for the licence key the
   PdfViewer checks (`AvaloniaLicense.props`).
 - **No notice needed,** for the same reasons as the PdfViewer's.
+
+## Fluent UI System Icons
+
+- **Version:** 1.1.344, the `@fluentui/svg-icons` npm package, built from
+  [microsoft/fluentui-system-icons](https://github.com/microsoft/fluentui-system-icons) at its tag `1.1.344`
+  (`a347af95478f989038cccbf085978865264c048a`).
+- **Licence:** MIT.
+- **In the app:** the shapes of 22 of its regular 20-pixel icons, which draw the toolbar's buttons, inside the binary.
+  `CoffeePdf/Toolbar/make-icons.sh` copies each one's path from the package into `CoffeePdf/Toolbar/Icons.axaml`. Of
+  the toolbar's other two icons, Squiggly is Fluent's underline letter with a wave CoffeePDF drew in place of its bar,
+  and Stamp is CoffeePDF's own.
+- **Notice from:** the package names the MIT licence but carries no licence file, so the text is the repository's
+  `LICENSE` at that tag. The repository's `NOTICE` lists three tools its build uses (replace, avocado and yargs). None
+  of their code is in the icons' shapes, so the app doesn't carry it.
+
+```text
+MIT License
+
+Copyright (c) 2020 Microsoft Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
