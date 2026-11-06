@@ -81,7 +81,7 @@ public sealed class ToolbarRulesTests
     {
         Assert.Equal(new[] { 0.5, 0.75, 1, 1.25, 1.5, 2, 4 }, ToolbarRules.ZoomPresets);
         Assert.Equal(new[] { ShapeType.Line, ShapeType.Arrow, ShapeType.Rectangle, ShapeType.Circle, ShapeType.Polygon, ShapeType.Star }, ToolbarRules.Shapes);
-        Assert.Equal(8, ToolbarRules.Swatches.Count);
+        Assert.Equal(["Yellow", "Green", "Blue", "Pink", "Purple", "Red", "Orange", "Black"], ToolbarRules.Swatches.Select(s => s.Name));
         Assert.NotEmpty(ToolbarRules.Fonts);
         Assert.NotEmpty(ToolbarRules.FontSizes);
     }

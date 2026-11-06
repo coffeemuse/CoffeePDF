@@ -514,19 +514,72 @@ public sealed class DocumentToolbarTests : IDisposable
     [PdfViewerFact]
     public async Task The_Stamp_menu_arms_the_Stamp_tool_with_the_label_chosen_first()
     {
+        // Moving the selection doesn't choose (ruling 3 of the final review): Return does.
         var path = Fixture();
 
-        var (labels, chosen, offered, tool) = await Headless.RunAsync(async () =>
+        var (whileSelected, labels, chosen, offered, tool, open) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
-            var offered = window.Toolbar.StampLabelList.Items.OfType<string>().ToList();
-            window.Toolbar.StampLabelList.SelectedItem = offered[2];
-            return (window.Viewer.StampLabels, offered[2], offered, window.Viewer.ActiveTool);
+            var t = window.Toolbar;
+            var item = await OpenStampLabelsAsync(window, 0);
+            var offered = t.StampLabelList.Items.OfType<string>().ToList();
+            item.Focus();
+            Dispatcher.UIThread.RunJobs();
+            Press(window, Key.Down);
+            Press(window, Key.Down);
+            var whileSelected = (window.Viewer.ActiveTool, t.StampFlyout.IsOpen, t.StampLabelList.SelectedItem as string);
+            Press(window, Key.Enter);
+            return (whileSelected, window.Viewer.StampLabels, offered[2], offered, window.Viewer.ActiveTool, t.StampFlyout.IsOpen);
         });
 
+        Assert.Equal((PdfViewerTool.None, true, chosen), whileSelected);
         Assert.Equal(chosen, labels[0]);
         Assert.Equal(offered.Count, labels.Count);
         Assert.Equal(PdfViewerTool.Stamp, tool);
+        Assert.False(open);
+    }
+
+    [PdfViewerFact]
+    public async Task An_arrow_key_in_the_stamp_labels_moves_without_choosing_and_Space_chooses()
+    {
+        // Ruling 3 of the final review: an arrow key chose a label, and closed the menu, at once.
+        var path = Fixture();
+
+        var (afterDown, selected, expected, afterSpace, first, open) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            var item = await OpenStampLabelsAsync(window, 0);
+            item.Focus();
+            Dispatcher.UIThread.RunJobs();
+            Press(window, Key.Down);
+            var afterDown = (window.Viewer.ActiveTool, t.StampFlyout.IsOpen);
+            var (selected, expected) = (t.StampLabelList.SelectedItem as string, t.StampLabelList.Items.OfType<string>().ElementAt(1));
+            Press(window, Key.Space);
+            return (afterDown, selected, expected, window.Viewer.ActiveTool, window.Viewer.StampLabels[0], t.StampFlyout.IsOpen);
+        });
+
+        Assert.Equal((PdfViewerTool.None, true), afterDown);
+        Assert.Equal(expected, selected);
+        Assert.Equal(PdfViewerTool.Stamp, afterSpace);
+        Assert.Equal(expected, first);
+        Assert.False(open);
+    }
+
+    /// <summary>
+    /// Opens the Stamp menu and waits until the label at <paramref name="index"/> is laid out and under the pointer: the
+    /// popup is placed a pass after it opens.
+    /// </summary>
+    private static async Task<ListBoxItem> OpenStampLabelsAsync(Window window, int index)
+    {
+        var t = ((CoffeePdf.Windows.DocumentWindow)window).Toolbar;
+        var label = t.StampLabelList.Items.OfType<string>().ElementAt(index);
+        t.StampFlyout.ShowAt(t.StampButton);
+        ListBoxItem? Item() => t.StampLabelList.GetVisualDescendants().OfType<ListBoxItem>().FirstOrDefault(i => (string?)i.Content == label);
+        await TestWindows.WaitForAsync(() => Item() is { IsEffectivelyVisible: true, Bounds.Width: > 0 } i
+            && i.TranslatePoint(new Point(i.Bounds.Width / 2, i.Bounds.Height / 2), window) is { } at
+            && window.InputHitTest(at) is Visual hit && (hit == i || i.IsVisualAncestorOf(hit)));
+        return Item()!;
     }
 
     [PdfViewerFact]
@@ -740,6 +793,65 @@ public sealed class DocumentToolbarTests : IDisposable
     }
 
     [PdfViewerFact]
+    public async Task The_More_menus_Shapes_and_Stamp_bring_their_own_menus()
+    {
+        // Ruling 1 of the final review: the More menu's Stamp listed the labels only, not the styles or Include Date.
+        var path = Fixture();
+
+        var styleNames = Enum.GetValues<PdfStampStyle>().Select(PdfViewer.StampStyleDisplayName).ToList();
+        var (shapes, star, labels, offered, separated, styles, checkedStyle, dateItem, wasDate, legal, date, reopened) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            window.Width = window.MinWidth;
+            await TestWindows.WaitForAsync(() => t.Tools.OverflowedChildren.Contains(t.ShapesButton)
+                && t.Tools.OverflowedChildren.Contains(t.StampButton) && t.MoreMenu.Items.Count > 0);
+            MenuItem Submenu(string header) => t.MoreMenu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == header);
+            var shapesItem = Submenu("Shapes");
+            var shapes = shapesItem.Items.OfType<MenuItem>().Select(i => (string?)i.Header).ToList();
+            shapesItem.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Star").Command!.Execute(null);
+            var star = (v.ActiveTool, v.SelectedShapeType);
+
+            var stamp = Submenu("Stamp").Items.ToList();
+            var labelCount = t.StampLabelList.Items.Count;
+            var labels = stamp.Take(labelCount).OfType<MenuItem>().Select(i => i.Header as string ?? "").ToList();
+            var separated = stamp.ElementAtOrDefault(labelCount) is Separator;
+            var styleItems = stamp.Skip(labelCount + 1).Take(5).OfType<MenuItem>().ToList();
+            var styles = styleItems.Where(i => i.ToggleType == MenuItemToggleType.Radio).Select(i => i.Header as string ?? "").ToList();
+            var checkedStyle = styleItems.Where(i => i.IsChecked).Select(i => (string?)i.Header).ToList();
+            var dateItem = stamp.ElementAtOrDefault(labelCount + 6) is MenuItem { ToggleType: MenuItemToggleType.CheckBox } d
+                ? ((string?)d.Header, d.IsChecked) : (null, false);
+            var (wasDate, wasStyle) = (v.IncludeStampDate, PdfViewer.StampStyleDisplayName(v.StampStyle));
+            styleItems.Single(i => (string?)i.Header == PdfViewer.StampStyleDisplayName(PdfStampStyle.Legal)).Command!.Execute(null);
+            (stamp[labelCount + 6] as MenuItem)?.Command?.Execute(null);
+            var (legal, date) = (v.StampStyle, v.IncludeStampDate);
+
+            // Opening the menu shows the viewer's stamp settings as they are now, however they were set.
+            v.StampStyle = PdfStampStyle.Flat;
+            t.MoreMenu.ShowAt(t.MoreButton);
+            await TestWindows.WaitForAsync(() => t.MoreMenu.IsOpen);
+            var reopened = Submenu("Stamp").Items.OfType<MenuItem>().Where(i => i.IsChecked).Select(i => i.Header as string ?? "").ToList();
+            t.MoreMenu.Hide();
+            return (shapes, star, labels, t.StampLabelList.Items.OfType<string>().ToList(), separated, styles,
+                (checkedStyle, wasStyle), dateItem, wasDate, legal, date, reopened);
+        });
+
+        Assert.Equal(["Line", "Arrow", "Rectangle", "Circle", "Polygon", "Star"], shapes);
+        Assert.Equal((PdfViewerTool.Shape, ShapeType.Star), star);
+        Assert.Equal(offered, labels);
+        Assert.True(separated, "No separator between the labels and the styles");
+        Assert.Equal(styleNames, styles);
+        Assert.Equal([checkedStyle.wasStyle], checkedStyle.checkedStyle); // the viewer's own
+        Assert.Equal(("Include Date", wasDate), dateItem);
+        Assert.Equal(PdfStampStyle.Legal, legal);
+        Assert.Equal(!wasDate, date);
+        var expectedChecks = new List<string> { PdfViewer.StampStyleDisplayName(PdfStampStyle.Flat) };
+        if (date)
+            expectedChecks.Add("Include Date");
+        Assert.Equal(expectedChecks, reopened);
+    }
+
+    [PdfViewerFact]
     public async Task At_its_minimum_width_everything_but_the_tools_fits()
     {
         var path = Fixture();
@@ -852,7 +964,7 @@ public sealed class DocumentToolbarTests : IDisposable
             t.Arm(PdfViewerTool.Highlight);
             t.ShowColourMenu();
             before = window.Viewer.HighlightColor;
-            t.Colours.Choose(CoffeePdf.Toolbar.ToolbarRules.Swatches[2]);
+            t.Colours.Choose(CoffeePdf.Toolbar.ToolbarRules.Swatches[2].Colour);
             var fromSwatch = window.Viewer.HighlightColor;
             t.Colours.ChooseHex("#112233");
             var shown = (t.ColourSwatch.Fill as Avalonia.Media.ISolidColorBrush)?.Color;
@@ -878,7 +990,7 @@ public sealed class DocumentToolbarTests : IDisposable
             t.Arm(PdfViewerTool.Shape);
             window.Viewer.ShapeFillColor = null;
             t.ShowColourMenu();
-            t.Colours.Choose(CoffeePdf.Toolbar.ToolbarRules.Swatches[2]);
+            t.Colours.Choose(CoffeePdf.Toolbar.ToolbarRules.Swatches[2].Colour);
             return window.Viewer.ShapeFillColor;
         });
 
@@ -903,6 +1015,98 @@ public sealed class DocumentToolbarTests : IDisposable
 
         Assert.Equal(new[] { "Fill", "Stroke" }, names);
         Assert.Null(fill);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Colour_buttons_swatch_follows_the_viewers_colour_however_it_changes()
+    {
+        // Ruling 2 of the final review: the swatch was shown only when the tool or the selection changed, and a
+        // selection's state comes before the viewer loads the markup's colours.
+        var path = Fixture();
+        var colour = new PdfAnnotationColor(0x12, 0x34, 0x56, 255);
+
+        var wrong = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            var properties = new (PdfViewerTool Tool, Action Set)[]
+            {
+                (PdfViewerTool.Highlight, () => v.HighlightColor = colour), (PdfViewerTool.Underline, () => v.UnderlineColor = colour),
+                (PdfViewerTool.Strikeout, () => v.StrikeoutColor = colour), (PdfViewerTool.Squiggly, () => v.SquigglyColor = colour),
+                (PdfViewerTool.Note, () => v.NoteColor = colour), (PdfViewerTool.Stamp, () => v.StampColor = colour),
+                (PdfViewerTool.Draw, () => v.DrawStrokeColor = colour), (PdfViewerTool.Shape, () => v.ShapeFillColor = colour),
+                (PdfViewerTool.Text, () => v.TextAnnotationFillColor = colour),
+            };
+            var wrong = new List<string>();
+            foreach (var (tool, set) in properties)
+            {
+                t.Arm(tool);
+                set();
+                var shown = (t.ColourSwatch.Fill as Avalonia.Media.ISolidColorBrush)?.Color;
+                if (shown != Avalonia.Media.Color.FromArgb(255, 0x12, 0x34, 0x56))
+                    wrong.Add($"{tool}: the swatch shows {shown}");
+                t.Arm(tool);
+            }
+            return wrong;
+        });
+
+        Assert.Empty(wrong);
+    }
+
+    [PdfViewerFact]
+    public async Task A_stamps_Colour_menu_offers_its_labels_colour_where_a_fill_offers_none()
+    {
+        // Ruling 4 of the final review: a stamp with no colour of its own takes its label's, so none is offered as that.
+        var path = Fixture();
+
+        var (fillNone, stampNone, stampName, colour) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            t.Arm(PdfViewerTool.Shape);
+            t.ShowColourMenu();
+            var fillNone = (t.Colours.NoneButton.IsVisible, t.Colours.NoneButton.Content as string);
+            t.Arm(PdfViewerTool.Stamp);
+            v.StampColor = new PdfAnnotationColor(0, 0, 255, 255);
+            t.ShowColourMenu();
+            var stampNone = (t.Colours.NoneButton.IsVisible, t.Colours.NoneButton.Content as string);
+            var stampName = AutomationProperties.GetName(t.Colours.NoneButton);
+            t.Colours.Choose(null);
+            return (fillNone, stampNone, stampName, v.StampColor);
+        });
+
+        Assert.Equal((true, "No Colour"), fillNone);
+        Assert.Equal((true, "Label's Colour"), stampNone);
+        Assert.Equal("Label's Colour", stampName);
+        Assert.Null(colour);
+    }
+
+    [PdfViewerFact]
+    public async Task The_swatches_are_named_by_colour_and_draw_it_inside_them()
+    {
+        // Ruling 5 of the final review: a swatch's colour in its Background gave way to Fluent's hover and pressed
+        // backgrounds, and VoiceOver read its hex.
+        var path = Fixture();
+
+        var (names, wrong) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var swatches = window.Toolbar.Colours.SwatchButtons;
+            var wrong = new List<string>();
+            for (var i = 0; i < swatches.Count; i++)
+            {
+                var (button, colour) = (swatches[i], ToolbarRules.Swatches[i].Colour);
+                var expected = Avalonia.Media.Color.FromArgb(colour.A, colour.R, colour.G, colour.B);
+                if (button.IsSet(TemplatedControl.BackgroundProperty))
+                    wrong.Add($"{AutomationProperties.GetName(button)} sets its Background");
+                if ((button.Content as Avalonia.Controls.Shapes.Shape)?.Fill is not Avalonia.Media.ISolidColorBrush { } fill || fill.Color != expected)
+                    wrong.Add($"{AutomationProperties.GetName(button)} doesn't draw {expected} inside it");
+            }
+            return (swatches.Select(b => AutomationProperties.GetName(b)).ToList(), wrong);
+        });
+
+        Assert.Equal(["Yellow", "Green", "Blue", "Pink", "Purple", "Red", "Orange", "Black"], names);
+        Assert.Empty(wrong);
     }
 
     [PdfViewerFact]
@@ -955,28 +1159,38 @@ public sealed class DocumentToolbarTests : IDisposable
     }
 
     [PdfViewerFact]
-    public async Task A_selected_shape_shows_its_format_menus_until_the_selection_ends()
+    public async Task A_selected_shape_shows_its_format_menus_and_its_colour_until_the_selection_ends()
     {
         var path = Fixture();
+        var red = new PdfAnnotationColor(255, 0, 0, 255);
 
-        var (whileSelected, afterwards) = await Headless.RunAsync(async () =>
+        var (whileSelected, swatch, afterwards) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
             var (v, t) = (window.Viewer, window.Toolbar);
             await TestWindows.WaitForAsync(() => HasPage(v));
             t.ChooseShape(ShapeType.Rectangle);
-            v.ShapeFillColor = new PdfAnnotationColor(255, 0, 0, 255); // so the click can land on its centre, not its edge
+            v.ShapeFillColor = red; // so the click can land on its centre, not its edge
             await DragUntilAnnotatedAsync(window, v, OnPage(v, window, 200, 500), OnPage(v, window, 300, 420), PdfAnnotationType.Square);
             v.ActiveTool = PdfViewerTool.None; // so what shows is the selection's, not the tool's
+            // A shape just drawn is selected already, so the click below would show nothing new: end that selection first
+            // (ruling 6 of the final review).
+            Click(window, OnPage(v, window, 450, 150));
+            await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.None);
+            v.ShapeFillColor = new PdfAnnotationColor(0, 200, 0, 255); // new shapes' fill, which selecting this one replaces
             Click(window, OnPage(v, window, 250, 460));
-            await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.Shape);
+            // The selection's state comes before the viewer loads the shape's style (ruling 2 of the final review).
+            await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.Shape && v.ShapeFillColor == red);
+            Dispatcher.UIThread.RunJobs();
             var whileSelected = (t.ColourButton.IsVisible, t.LineButton.IsVisible, t.TextButton.IsVisible);
+            var swatch = (t.ColourSwatch.Fill as Avalonia.Media.ISolidColorBrush)?.Color;
             Click(window, OnPage(v, window, 450, 150));
             await TestWindows.WaitForAsync(() => !t.FormatGroup.IsVisible);
-            return (whileSelected, t.FormatGroup.IsVisible);
+            return (whileSelected, swatch, t.FormatGroup.IsVisible);
         });
 
         Assert.Equal((true, true, false), whileSelected);
+        Assert.Equal(Avalonia.Media.Color.FromArgb(255, 255, 0, 0), swatch);
         Assert.False(afterwards);
     }
 

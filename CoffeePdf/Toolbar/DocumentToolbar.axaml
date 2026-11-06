@@ -79,7 +79,7 @@
           <ToggleSplitButton.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft" Opening="OnStampOpening">
               <StackPanel Spacing="8" Width="220">
-                <ListBox x:Name="StampLabelList" MaxHeight="260" AutomationProperties.Name="Stamp Labels" SelectionChanged="OnStampLabelChosen" />
+                <ListBox x:Name="StampLabelList" MaxHeight="260" AutomationProperties.Name="Stamp Labels" />
                 <ComboBox x:Name="StampStyleBox" HorizontalAlignment="Stretch" AutomationProperties.Name="Stamp Style" ToolTip.Tip="Stamp Style" SelectionChanged="OnStampStyleChosen" />
                 <CheckBox x:Name="StampDateBox" Content="Include Date" IsCheckedChanged="OnStampDateChanged" />
               </StackPanel>
@@ -90,7 +90,7 @@
         <Button x:Name="MoreButton" Classes="bar" pdfc:OverflowToolbarPanel.IsOverflowIndicator="True" ToolTip.Tip="More Tools" AutomationProperties.Name="More Tools">
           <PathIcon Data="{StaticResource Icon.More}" />
           <Button.Flyout>
-            <MenuFlyout Placement="BottomEdgeAlignedLeft" />
+            <MenuFlyout Placement="BottomEdgeAlignedLeft" Opening="OnMoreOpening" />
           </Button.Flyout>
         </Button>
         <!-- The armed tool's or selection's format menus (spec §3's table). Pinned, so they never overflow. -->

@@ -34,6 +34,7 @@ public partial class DocumentToolbar : UserControl
         foreach (var box in new[] { PageBox, ZoomBox })
             box.TextChanging += (_, _) => { if (!_showingBox) _edited.Add(box); }; // TextChanged comes a job later
         StampLabelList.AddHandler(PointerReleasedEvent, OnStampLabelReleased, RoutingStrategies.Bubble, handledEventsToo: true);
+        StampLabelList.AddHandler(KeyDownEvent, OnStampLabelKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
         FillZoomMenu();
         foreach (var shape in ToolbarRules.Shapes)
             ShapesMenu.Items.Add(Item(shape.ToString(), () => ChooseShape(shape)));
@@ -92,7 +93,19 @@ public partial class DocumentToolbar : UserControl
             ShowSearch();
         else if (e.Property == PdfViewer.HasDocumentProperty || e.Property == PdfViewer.CanEditAnnotationsProperty)
             ShowAvailability();
+        else if (ColourProperties.Contains(e.Property))
+            ShowColourSwatch(); // the viewer loads a selection's colours after its state shows (ruling 2 of the final review)
     }
+
+    /// <summary>The viewer's colours the Colour button may show (spec §3's table).</summary>
+    private static readonly HashSet<AvaloniaProperty> ColourProperties =
+    [
+        PdfViewer.HighlightColorProperty, PdfViewer.UnderlineColorProperty, PdfViewer.StrikeoutColorProperty,
+        PdfViewer.SquigglyColorProperty, PdfViewer.NoteColorProperty, PdfViewer.StampColorProperty,
+        PdfViewer.DrawStrokeColorProperty, PdfViewer.ShapeFillColorProperty, PdfViewer.ShapeStrokeColorProperty,
+        PdfViewer.TextAnnotationFillColorProperty, PdfViewer.TextAnnotationStrokeColorProperty,
+        PdfViewer.TextAnnotationTextColorProperty,
+    ];
 
     /// <summary>Until a document loads, only the sidebar button is available (spec §5).</summary>
     private void ShowAvailability()
@@ -394,22 +407,28 @@ public partial class DocumentToolbar : UserControl
     private void OnStampOpening(object? sender, EventArgs e) => ShowStamp();
 
     /// <summary>
-    /// A click on the label already selected raises no SelectionChanged, so a release over any label chooses it too (spec §3);
-    /// the current label stays selected, to show which one the button places.
+    /// A release over a label chooses it (spec §3), the one already selected too, which raises no SelectionChanged. The
+    /// selection only shows which label the button places: it moves with the arrow keys, and choosing on it would choose,
+    /// and close the menu, at the first arrow (ruling 3 of the final review).
     /// </summary>
     private void OnStampLabelReleased(object? sender, PointerReleasedEventArgs e)
     {
         if (e.InitialPressMouseButton == MouseButton.Left && (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { Content: string label })
+            ChooseStampLabelAndClose(label);
+    }
+
+    /// <summary>Return or Space chooses the label the arrow keys have selected.</summary>
+    private void OnStampLabelKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Space && StampLabelList.SelectedItem is string label)
         {
-            ChooseStampLabel(label);
-            StampFlyout.Hide();
+            ChooseStampLabelAndClose(label);
+            e.Handled = true;
         }
     }
 
-    private void OnStampLabelChosen(object? sender, SelectionChangedEventArgs e)
+    private void ChooseStampLabelAndClose(string label)
     {
-        if (_showingStamp || StampLabelList.SelectedItem is not string label)
-            return;
         ChooseStampLabel(label);
         StampFlyout.Hide();
     }
@@ -480,12 +499,42 @@ public partial class DocumentToolbar : UserControl
                 foreach (var shape in ToolbarRules.Shapes)
                     item.Items.Add(Item(shape.ToString(), () => ChooseShape(shape)));
             else if (tool == PdfViewerTool.Stamp)
-                foreach (var label in _stampLabels)
-                    item.Items.Add(Item(label, () => ChooseStampLabel(label)));
+                FillStampItems(item);
             else
                 item.Command = new ActionCommand(() => Arm(tool));
             MoreMenu.Items.Add(item);
         }
+    }
+
+    /// <summary>The Stamp flyout's choices, as a submenu: the labels, then the styles and Include Date (spec §3).</summary>
+    private void FillStampItems(MenuItem stamp)
+    {
+        foreach (var label in _stampLabels)
+            stamp.Items.Add(Item(label, () => ChooseStampLabel(label)));
+        stamp.Items.Add(new Separator());
+        foreach (var style in StampStyles)
+            stamp.Items.Add(new MenuItem
+            {
+                Header = PdfViewer.StampStyleDisplayName(style),
+                ToggleType = MenuItemToggleType.Radio,
+                GroupName = "StampStyle",
+                IsChecked = _viewer?.StampStyle == style,
+                Command = new ActionCommand(() => Viewer.StampStyle = style),
+            });
+        stamp.Items.Add(new MenuItem
+        {
+            Header = "Include Date",
+            ToggleType = MenuItemToggleType.CheckBox,
+            IsChecked = _viewer?.IncludeStampDate == true,
+            Command = new ActionCommand(() => Viewer.IncludeStampDate = !Viewer.IncludeStampDate),
+        });
+    }
+
+    /// <summary>Rebuilt as it opens too, so its checks show the stamp's style and date as they are now.</summary>
+    private void OnMoreOpening(object? sender, EventArgs e)
+    {
+        if (_viewer is not null)
+            FillMoreMenu();
     }
 
     // --- The format menus -----------------------------------------------------------------------------------------------
@@ -519,19 +568,20 @@ public partial class DocumentToolbar : UserControl
     {
         var v = Viewer;
         static ColourSlot Solid(string name, Func<PdfAnnotationColor> get, Action<PdfAnnotationColor> set) =>
-            new(name, false, () => get(), c => { if (c is { } colour) set(colour); });
+            new(name, null, () => get(), c => { if (c is { } colour) set(colour); });
+        const string none = ColourSlot.NoColour;
         return (Selection(), v.ActiveTool) switch
         {
             (PageSelection.TextBox, _) or (PageSelection.None, PdfViewerTool.Text) =>
             [
-                new("Fill", true, () => v.TextAnnotationFillColor, c => v.TextAnnotationFillColor = c),
-                new("Border", true, () => v.TextAnnotationStrokeColor, c => v.TextAnnotationStrokeColor = c),
+                new("Fill", none, () => v.TextAnnotationFillColor, c => v.TextAnnotationFillColor = c),
+                new("Border", none, () => v.TextAnnotationStrokeColor, c => v.TextAnnotationStrokeColor = c),
                 Solid("Text", () => v.TextAnnotationTextColor, c => v.TextAnnotationTextColor = c),
             ],
             (PageSelection.Shape, _) or (PageSelection.None, PdfViewerTool.Shape) =>
             [
-                new("Fill", true, () => v.ShapeFillColor, c => v.ShapeFillColor = c),
-                new("Stroke", true, () => v.ShapeStrokeColor, c => v.ShapeStrokeColor = c),
+                new("Fill", none, () => v.ShapeFillColor, c => v.ShapeFillColor = c),
+                new("Stroke", none, () => v.ShapeStrokeColor, c => v.ShapeStrokeColor = c),
             ],
             (_, PdfViewerTool.Highlight) => [Solid("Colour", () => v.HighlightColor, c => v.HighlightColor = c)],
             (_, PdfViewerTool.Underline) => [Solid("Colour", () => v.UnderlineColor, c => v.UnderlineColor = c)],
@@ -539,8 +589,8 @@ public partial class DocumentToolbar : UserControl
             (_, PdfViewerTool.Squiggly) => [Solid("Colour", () => v.SquigglyColor, c => v.SquigglyColor = c)],
             (_, PdfViewerTool.Note) => [Solid("Colour", () => v.NoteColor, c => v.NoteColor = c)],
             (_, PdfViewerTool.Draw) => [Solid("Colour", () => v.DrawStrokeColor, c => v.DrawStrokeColor = c)],
-            // A stamp with no colour of its own takes its label's (PdfViewer.DefaultStampColorFor), so none isn't offered.
-            (_, PdfViewerTool.Stamp) => [new("Colour", false, () => v.StampColor, c => v.StampColor = c)],
+            // A stamp with no colour of its own takes its label's (PdfViewer.DefaultStampColorFor), so its none is that.
+            (_, PdfViewerTool.Stamp) => [new("Colour", "Label's Colour", () => v.StampColor, c => v.StampColor = c)],
             _ => [],
         };
     }

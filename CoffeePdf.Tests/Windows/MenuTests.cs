@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Pdf.Core;
-using Avalonia.Controls.Pdf.Services;
 using Avalonia.Headless;
 using Avalonia.Input;
 using CoffeePdf.Tests.Fixtures;

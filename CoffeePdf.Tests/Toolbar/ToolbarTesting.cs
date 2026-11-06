@@ -97,6 +97,8 @@ internal static class ToolbarTesting
         {
             Key.Enter => PhysicalKey.Enter,
             Key.Escape => PhysicalKey.Escape,
+            Key.Space => PhysicalKey.Space,
+            Key.Down => PhysicalKey.ArrowDown,
             Key.F => PhysicalKey.F,
             Key.H => PhysicalKey.H,
             Key.N => PhysicalKey.N,

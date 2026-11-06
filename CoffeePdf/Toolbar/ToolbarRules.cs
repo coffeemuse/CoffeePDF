@@ -14,6 +14,9 @@ internal enum FormatMenus
     Text = 4,
 }
 
+/// <summary>A swatch of the Colour menu: its colour, and the name VoiceOver reads for it.</summary>
+internal sealed record Swatch(string Name, PdfAnnotationColor Colour);
+
 /// <summary>What's selected on a page, as far as the format menus go.</summary>
 internal enum PageSelection
 {
@@ -43,11 +46,12 @@ internal static class ToolbarRules
     public static readonly IReadOnlyList<float> FontSizes =
         [6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
 
-    /// <summary>The Colour menu's swatches: yellow, green, blue, pink, purple, red, orange and black.</summary>
-    public static readonly IReadOnlyList<PdfAnnotationColor> Swatches =
+    /// <summary>The Colour menu's swatches.</summary>
+    public static readonly IReadOnlyList<Swatch> Swatches =
     [
-        new(255, 212, 0, 255), new(52, 199, 89, 255), new(0, 122, 255, 255), new(255, 45, 85, 255),
-        new(175, 82, 222, 255), new(255, 59, 48, 255), new(255, 149, 0, 255), new(0, 0, 0, 255),
+        new("Yellow", new(255, 212, 0, 255)), new("Green", new(52, 199, 89, 255)), new("Blue", new(0, 122, 255, 255)),
+        new("Pink", new(255, 45, 85, 255)), new("Purple", new(175, 82, 222, 255)), new("Red", new(255, 59, 48, 255)),
+        new("Orange", new(255, 149, 0, 255)), new("Black", new(0, 0, 0, 255)),
     ];
 
     /// <summary>The format menus for <paramref name="tool"/>, armed, or for <paramref name="selection"/>, which wins.</summary>
