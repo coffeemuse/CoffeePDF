@@ -1,8 +1,11 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Pdf.Core;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -541,5 +544,238 @@ public sealed class DocumentToolbarTests : IDisposable
         Assert.Equal(PdfViewerTool.Stamp, tool);
         Assert.Equal(current, first);
         Assert.False(shown);
+    }
+
+    [PdfViewerFact]
+    public async Task The_format_menus_follow_the_armed_tool()
+    {
+        var path = Fixture();
+
+        var wrong = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            var wrong = new List<string>();
+            foreach (var tool in ToolsInOrder)
+            {
+                t.Arm(tool);
+                var expected = (tool, Colour: tool != PdfViewerTool.Link, Line: tool is PdfViewerTool.Draw or PdfViewerTool.Shape or PdfViewerTool.Text, Text: tool == PdfViewerTool.Text);
+                var shown = (tool, Colour: t.FormatGroup.IsVisible && t.ColourButton.IsVisible, Line: t.FormatGroup.IsVisible && t.LineButton.IsVisible, Text: t.FormatGroup.IsVisible && t.TextButton.IsVisible);
+                if (shown != expected)
+                    wrong.Add($"{shown}, not {expected}");
+                t.Arm(tool);
+            }
+            if (t.FormatGroup.IsVisible)
+                wrong.Add("With no tool armed, the format menus still show");
+            return wrong;
+        });
+
+        Assert.Empty(wrong);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Colour_menu_sets_the_armed_tools_colour_from_a_swatch_or_a_typed_one()
+    {
+        var path = Fixture();
+
+        var before = default(PdfAnnotationColor);
+        var (fromSwatch, typed, swatchShown) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            t.Arm(PdfViewerTool.Highlight);
+            t.ShowColourMenu();
+            before = window.Viewer.HighlightColor;
+            t.Colours.Choose(CoffeePdf.Toolbar.ToolbarRules.Swatches[2]);
+            var fromSwatch = window.Viewer.HighlightColor;
+            t.Colours.ChooseHex("#112233");
+            var shown = (t.ColourSwatch.Fill as Avalonia.Media.ISolidColorBrush)?.Color;
+            return (fromSwatch, window.Viewer.HighlightColor, shown);
+        });
+
+        // The highlight's colour is half opaque by default, and a new colour keeps that.
+        Assert.NotEqual(255, before.A);
+        Assert.Equal(new PdfAnnotationColor(0, 122, 255, before.A), fromSwatch);
+        Assert.Equal(new PdfAnnotationColor(0x11, 0x22, 0x33, before.A), typed);
+        Assert.Equal(Avalonia.Media.Color.FromArgb(before.A, 0x11, 0x22, 0x33), swatchShown);
+    }
+
+    [PdfViewerFact]
+    public async Task A_colour_chosen_for_a_slot_with_no_colour_is_opaque()
+    {
+        var path = Fixture();
+
+        var fill = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            t.Arm(PdfViewerTool.Shape);
+            window.Viewer.ShapeFillColor = null;
+            t.ShowColourMenu();
+            t.Colours.Choose(CoffeePdf.Toolbar.ToolbarRules.Swatches[2]);
+            return window.Viewer.ShapeFillColor;
+        });
+
+        Assert.Equal(new PdfAnnotationColor(0, 122, 255, 255), fill);
+    }
+
+    [PdfViewerFact]
+    public async Task A_shapes_Colour_menu_has_fill_and_stroke_and_No_Colour_clears_the_fill()
+    {
+        var path = Fixture();
+
+        var (names, fill) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            t.Arm(PdfViewerTool.Shape);
+            window.Viewer.ShapeFillColor = new PdfAnnotationColor(255, 0, 0, 255);
+            t.ShowColourMenu();
+            t.Colours.Choose(null); // the first tab, Fill
+            return (t.ColourSlots().Select(s => s.Name).ToList(), window.Viewer.ShapeFillColor);
+        });
+
+        Assert.Equal(new[] { "Fill", "Stroke" }, names);
+        Assert.Null(fill);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Line_menu_sets_the_armed_tools_width()
+    {
+        var path = Fixture();
+
+        var (draw, shape) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            t.Arm(PdfViewerTool.Draw);
+            t.ShowLineMenu();
+            t.LineWidths.Choose(4);
+            t.Arm(PdfViewerTool.Shape);
+            t.ShowLineMenu();
+            t.LineWidths.Choose(7.5);
+            return (window.Viewer.DrawStrokeWidth, window.Viewer.ShapeStrokeWidth);
+        });
+
+        Assert.Equal(4f, draw);
+        Assert.Equal(7.5f, shape);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Text_menu_sets_the_text_boxs_format()
+    {
+        var path = Fixture();
+
+        var (attributes, align, size, font) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            t.Arm(PdfViewerTool.Text);
+            t.ShowTextMenu();
+            t.TextFormat.BoldButton.IsChecked = true;
+            t.TextFormat.ItalicButton.IsChecked = true;
+            // The flyout isn't open, so its button isn't in the window to click: raise its Click, which its handler takes.
+            t.TextFormat.AlignCentreButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            t.TextFormat.SizeBox.SelectedItem = 18f;
+            t.TextFormat.FontBox.SelectedItem = CoffeePdf.Toolbar.ToolbarRules.Fonts[^1];
+            var v = window.Viewer;
+            return (v.TextAnnotationFontAttributes, v.TextAnnotationTextAlign, v.TextAnnotationFontSize, v.TextAnnotationFont);
+        });
+
+        Assert.Equal(FontAttributes.Bold | FontAttributes.Italic, attributes);
+        Assert.Equal(TextAnnotationAlignment.Center, align);
+        Assert.Equal(18f, size);
+        Assert.Equal(CoffeePdf.Toolbar.ToolbarRules.Fonts[^1], font);
+    }
+
+    [PdfViewerFact]
+    public async Task A_selected_shape_shows_its_format_menus_until_the_selection_ends()
+    {
+        var path = Fixture();
+
+        var (whileSelected, afterwards) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            await TestWindows.WaitForAsync(() => HasPage(v));
+            t.ChooseShape(ShapeType.Rectangle);
+            v.ShapeFillColor = new PdfAnnotationColor(255, 0, 0, 255); // so the click can land on its centre, not its edge
+            await DragUntilAnnotatedAsync(window, v, OnPage(v, window, 200, 500), OnPage(v, window, 300, 420), PdfAnnotationType.Square);
+            v.ActiveTool = PdfViewerTool.None; // so what shows is the selection's, not the tool's
+            Click(window, OnPage(v, window, 250, 460));
+            await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.Shape);
+            var whileSelected = (t.ColourButton.IsVisible, t.LineButton.IsVisible, t.TextButton.IsVisible);
+            Click(window, OnPage(v, window, 450, 150));
+            await TestWindows.WaitForAsync(() => !t.FormatGroup.IsVisible);
+            return (whileSelected, t.FormatGroup.IsVisible);
+        });
+
+        Assert.Equal((true, true, false), whileSelected);
+        Assert.False(afterwards);
+    }
+
+    [PdfViewerFact]
+    public async Task At_its_minimum_width_the_text_tools_format_menus_still_fit()
+    {
+        var path = Fixture();
+
+        var (formatEnd, rightStart, shown) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Width = window.MinWidth;
+            window.Toolbar.Arm(PdfViewerTool.Text);
+            await TestWindows.WaitForAsync(() => window.Toolbar.FormatGroup.IsEffectivelyVisible && window.Toolbar.FormatGroup.Bounds.Width > 0);
+            var t = window.Toolbar;
+            double X(Control c, double at) => c.TranslatePoint(new Avalonia.Point(at, 0), t)!.Value.X;
+            return (X(t.FormatGroup, t.FormatGroup.Bounds.Width), X(t.RightGroup, 0), t.TextButton.IsEffectivelyVisible);
+        });
+
+        Assert.True(formatEnd <= rightStart, $"The format menus end at {formatEnd}, past the right group's start at {rightStart}");
+        Assert.True(shown);
+    }
+
+    [PdfViewerFact]
+    public async Task A_text_box_being_edited_shows_all_three_format_menus()
+    {
+        var path = Fixture();
+
+        var (shown, names) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var (v, t) = (window.Viewer, window.Toolbar);
+            await TestWindows.WaitForAsync(() => HasPage(v));
+            t.Arm(PdfViewerTool.Text);
+            await DragUntilAnnotatedAsync(window, v, OnPage(v, window, 250, 350), OnPage(v, window, 420, 290), PdfAnnotationType.FreeText);
+            window.KeyTextInput("abc");
+            Dispatcher.UIThread.RunJobs();
+            await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.TextBox);
+            v.ActiveTool = PdfViewerTool.None; // so what shows is the selection's, not the tool's
+            return ((t.ColourButton.IsVisible, t.LineButton.IsVisible, t.TextButton.IsVisible), t.ColourSlots().Select(s => s.Name).ToList());
+        });
+
+        Assert.Equal((true, true, true), shown);
+        Assert.Equal(new[] { "Fill", "Border", "Text" }, names);
+    }
+
+    /// <summary>
+    /// Drags with the armed tool until the viewer has the annotation it draws. Now and then (about one drag in six, in
+    /// the headless run) the viewer drops a drag, as probe 5 saw, and a test that waits for what the drag made would wait
+    /// for nothing; so a drag that made nothing is made again.
+    /// </summary>
+    private static async Task DragUntilAnnotatedAsync(Avalonia.Controls.Window window, PdfViewer viewer, Avalonia.Point from, Avalonia.Point to, PdfAnnotationType type)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            Drag(window, from, to);
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+            while (DateTime.UtcNow < deadline)
+            {
+                if ((await viewer.GetAnnotationsAsync(0, CancellationToken.None)).Any(a => a.Type == type))
+                    return;
+                await Task.Delay(1);
+                Dispatcher.UIThread.RunJobs();
+            }
+        }
+        throw new TimeoutException($"No {type} annotation came from five drags");
     }
 }

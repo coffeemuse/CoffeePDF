@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Pdf.Core;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -32,6 +33,7 @@ public partial class DocumentToolbar : UserControl
         foreach (var shape in ToolbarRules.Shapes)
             ShapesMenu.Items.Add(Item(shape.ToString(), () => ChooseShape(shape)));
         Tools.OverflowChanged += (_, _) => FillMoreMenu();
+        Colours.Chosen += (_, _) => ShowColourSwatch();
     }
 
     /// <summary>Print, as the window does it, so a failure is reported, not lost (spec §4).</summary>
@@ -56,6 +58,7 @@ public partial class DocumentToolbar : UserControl
         _stampLabels = viewer.StampLabels;
         ShowStamp();
         viewer.PropertyChanged += OnViewerPropertyChanged;
+        viewer.Classes.CollectionChanged += (_, _) => ShowTools(); // :shape-selected and :editing-text come and go
         ShowSidebar();
         ShowSearch();
         ShowAvailability();
@@ -318,6 +321,7 @@ public partial class DocumentToolbar : UserControl
             else if (button is ToggleSplitButton split)
                 split.IsChecked = armed;
         }
+        ShowFormatMenus();
     }
 
     internal void ChooseShape(ShapeType shape)
@@ -408,6 +412,98 @@ public partial class DocumentToolbar : UserControl
             MoreMenu.Items.Add(item);
         }
     }
+
+    // --- The format menus -----------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// What's selected on the page, from the viewer's states (spec §4). The viewer exposes nothing else: SelectedShapeType
+    /// is None whenever no tool is armed, so it can't tell a text box from a shape. A text box being edited shows
+    /// :editing-text (with :shape-selected), and one only selected shows :shape-selected alone, like a shape (spec §10,
+    /// probes 5 and 5b).
+    /// </summary>
+    internal PageSelection Selection()
+    {
+        var states = Viewer.Classes;
+        if (states.Contains(":editing-text"))
+            return PageSelection.TextBox;
+        return states.Contains(":shape-selected") ? PageSelection.Shape : PageSelection.None;
+    }
+
+    private void ShowFormatMenus()
+    {
+        var menus = ToolbarRules.For(Viewer.ActiveTool, Selection());
+        ColourButton.IsVisible = menus.HasFlag(FormatMenus.Colour);
+        LineButton.IsVisible = menus.HasFlag(FormatMenus.Line);
+        TextButton.IsVisible = menus.HasFlag(FormatMenus.Text);
+        FormatGroup.IsVisible = menus != FormatMenus.None;
+        ShowColourSwatch();
+    }
+
+    /// <summary>The colours the Colour menu edits for the armed tool or the selection, which wins (spec §3's table).</summary>
+    internal IReadOnlyList<ColourSlot> ColourSlots()
+    {
+        var v = Viewer;
+        static ColourSlot Solid(string name, Func<PdfAnnotationColor> get, Action<PdfAnnotationColor> set) =>
+            new(name, false, () => get(), c => { if (c is { } colour) set(colour); });
+        return (Selection(), v.ActiveTool) switch
+        {
+            (PageSelection.TextBox, _) or (PageSelection.None, PdfViewerTool.Text) =>
+            [
+                new("Fill", true, () => v.TextAnnotationFillColor, c => v.TextAnnotationFillColor = c),
+                new("Border", true, () => v.TextAnnotationStrokeColor, c => v.TextAnnotationStrokeColor = c),
+                Solid("Text", () => v.TextAnnotationTextColor, c => v.TextAnnotationTextColor = c),
+            ],
+            (PageSelection.Shape, _) or (PageSelection.None, PdfViewerTool.Shape) =>
+            [
+                new("Fill", true, () => v.ShapeFillColor, c => v.ShapeFillColor = c),
+                new("Stroke", true, () => v.ShapeStrokeColor, c => v.ShapeStrokeColor = c),
+            ],
+            (_, PdfViewerTool.Highlight) => [Solid("Colour", () => v.HighlightColor, c => v.HighlightColor = c)],
+            (_, PdfViewerTool.Underline) => [Solid("Colour", () => v.UnderlineColor, c => v.UnderlineColor = c)],
+            (_, PdfViewerTool.Strikeout) => [Solid("Colour", () => v.StrikeoutColor, c => v.StrikeoutColor = c)],
+            (_, PdfViewerTool.Squiggly) => [Solid("Colour", () => v.SquigglyColor, c => v.SquigglyColor = c)],
+            (_, PdfViewerTool.Note) => [Solid("Colour", () => v.NoteColor, c => v.NoteColor = c)],
+            (_, PdfViewerTool.Draw) => [Solid("Colour", () => v.DrawStrokeColor, c => v.DrawStrokeColor = c)],
+            // A stamp with no colour of its own takes its label's (PdfViewer.DefaultStampColorFor), so none isn't offered.
+            (_, PdfViewerTool.Stamp) => [new("Colour", false, () => v.StampColor, c => v.StampColor = c)],
+            _ => [],
+        };
+    }
+
+    /// <summary>The Colour button shows the first colour its menu edits.</summary>
+    private void ShowColourSwatch() =>
+        ColourSwatch.Fill = ColourSlots().FirstOrDefault()?.Get() is { } colour ? ColourPicker.Brush(colour) : Brushes.Transparent;
+
+    internal void ShowColourMenu() => Colours.Show(ColourSlots());
+
+    internal void ShowLineMenu()
+    {
+        var (get, set) = LineWidth();
+        LineWidths.Show(get, set);
+    }
+
+    /// <summary>The width the Line menu edits for the armed tool or the selection, which wins (spec §3's table).</summary>
+    private (Func<float> Get, Action<float> Set) LineWidth()
+    {
+        var v = Viewer;
+        return (Selection(), v.ActiveTool) switch
+        {
+            (PageSelection.TextBox, _) or (PageSelection.None, PdfViewerTool.Text) =>
+                (() => v.TextAnnotationStrokeWidth, w => v.TextAnnotationStrokeWidth = w),
+            (PageSelection.Shape, _) or (PageSelection.None, PdfViewerTool.Shape) =>
+                (() => v.ShapeStrokeWidth, w => v.ShapeStrokeWidth = w),
+            _ => (() => v.DrawStrokeWidth, w => v.DrawStrokeWidth = w),
+        };
+    }
+
+    internal void ShowTextMenu() => TextFormat.Show(Viewer);
+
+    private void OnColourOpening(object? sender, EventArgs e) => ShowColourMenu();
+
+    private void OnLineOpening(object? sender, EventArgs e) => ShowLineMenu();
+
+    private void OnTextOpening(object? sender, EventArgs e) => ShowTextMenu();
+
     // --- Print ----------------------------------------------------------------------------------------------------------
 
     private async void OnPrint(object? sender, RoutedEventArgs e) => await Print();

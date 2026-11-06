@@ -4,7 +4,7 @@
         xmlns:toolbar="using:CoffeePdf.Toolbar"
         x:Class="CoffeePdf.Windows.DocumentWindow"
         Title="CoffeePDF"
-        Width="1000" Height="760" MinWidth="560">
+        Width="1000" Height="760" MinWidth="760">
   <NativeMenu.Menu>
     <NativeMenu>
       <NativeMenuItem Header="File">

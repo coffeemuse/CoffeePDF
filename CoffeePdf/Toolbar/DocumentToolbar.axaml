@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:pdfc="using:Avalonia.Controls.Pdf.Controls"
+             xmlns:toolbar="using:CoffeePdf.Toolbar"
              x:Class="CoffeePdf.Toolbar.DocumentToolbar">
   <!-- CoffeePDF's own toolbar (toolbar spec §3, §4), in place of the PdfViewer's: it drives the window's viewer through
        its public API only. The tools, in the middle, collapse into the More button when the window is narrow. -->
@@ -85,6 +86,35 @@
             <MenuFlyout Placement="BottomEdgeAlignedLeft" />
           </Button.Flyout>
         </Button>
+        <!-- The armed tool's or selection's format menus (spec §3's table). Pinned, so they never overflow. -->
+        <StackPanel x:Name="FormatGroup" Orientation="Horizontal" Spacing="2" Margin="8,0,0,0" IsVisible="False"
+                    pdfc:OverflowToolbarPanel.IsPinned="True">
+          <DropDownButton x:Name="ColourButton" Classes="bar" ToolTip.Tip="Colour" AutomationProperties.Name="Colour">
+            <Ellipse x:Name="ColourSwatch" Width="14" Height="14" StrokeThickness="1"
+                     Stroke="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+            <DropDownButton.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft" Opening="OnColourOpening">
+                <toolbar:ColourPicker x:Name="Colours" />
+              </Flyout>
+            </DropDownButton.Flyout>
+          </DropDownButton>
+          <DropDownButton x:Name="LineButton" Classes="bar" ToolTip.Tip="Line Width" AutomationProperties.Name="Line Width">
+            <PathIcon Data="{StaticResource Icon.Line}" />
+            <DropDownButton.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft" Opening="OnLineOpening">
+                <toolbar:LinePicker x:Name="LineWidths" />
+              </Flyout>
+            </DropDownButton.Flyout>
+          </DropDownButton>
+          <DropDownButton x:Name="TextButton" Classes="bar" ToolTip.Tip="Text Format" AutomationProperties.Name="Text Format">
+            <PathIcon Data="{StaticResource Icon.TextFormat}" />
+            <DropDownButton.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft" Opening="OnTextOpening">
+                <toolbar:TextFormatPicker x:Name="TextFormat" />
+              </Flyout>
+            </DropDownButton.Flyout>
+          </DropDownButton>
+        </StackPanel>
       </pdfc:OverflowToolbarPanel>
       <StackPanel x:Name="RightGroup" Grid.Column="2" Orientation="Horizontal" Spacing="4">
         <TextBox x:Name="SearchBox" Width="210" VerticalAlignment="Center" PlaceholderText="Search"
