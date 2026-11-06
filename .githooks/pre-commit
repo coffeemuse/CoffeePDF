@@ -6,8 +6,8 @@
 #   to the macOS full name.
 # - No staged file, or file name, may hold the account's full name, account name or home folder: as text, or in the
 #   UTF-16, Latin-1 and hex forms a PDF keeps its strings in. They're read at commit time, so they're written nowhere,
-#   and a refusal never prints them. In THIRD-PARTY-NOTICES.md only, two credits from other projects' notices that
-#   begin with the account name are let through (check-personal-details.py lists their surnames).
+#   and a refusal never prints them. One exception: inside THIRD-PARTY-NOTICES.md's ```text blocks, which hold other
+#   projects' notices word for word, the account name as a plain word is let through.
 #
 # The check itself is check-personal-details.py, which the commit-msg hook shares. It fails closed: a staged file that
 # can't be read, or a check that can't finish, refuses the commit.

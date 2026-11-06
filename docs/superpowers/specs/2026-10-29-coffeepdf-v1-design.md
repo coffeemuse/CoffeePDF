@@ -349,7 +349,7 @@ The channel has no machine-readable contract the way the API's `openapi.yaml` is
 - **For now:** the repository is private and the code proprietary.
 - **The intent is MIT,** reconsidered if later dependencies need it. The owner settles it before the repository goes public, once the app works fully and its dependencies are settled.
 - **Signed builds:** the owner distributes signed, notarised builds. Anyone who later builds from source needs their own Avalonia licence that covers the PdfViewer.
-- **Third-party notices:** `THIRD-PARTY-NOTICES.md`, at the repository's root, has a section for each third-party component the app carries: its version, its licence and its notice, copied from the package or its upstream repository. They are the .NET runtime, Avalonia (with the patched macOS library), MicroCom.Runtime, Tmds.DBus.Protocol, SkiaSharp, HarfBuzzSharp and PDFium (both copies, with the projects PDFium builds in). The PdfViewer and AvaloniaUI.Licensing are commercial, and Avalonia's terms ask for no notice, which their sections say. `package.sh` copies the file to the app's `Contents/Resources`, and stops if it's missing or doesn't name a native library the app carries. A change that adds a component adds its section (added 2026-11-05, after v1.0.0, which shipped without it).
+- **Third-party notices:** `THIRD-PARTY-NOTICES.md`, at the repository's root, has a section for each third-party component the app carries: its version, its licence and its notice, copied from the package or its upstream repository. They are the .NET runtime, Avalonia (with the patched macOS library), MicroCom.Runtime, Tmds.DBus.Protocol, SkiaSharp, HarfBuzzSharp and PDFium (both copies, with the projects PDFium builds in). The PdfViewer and AvaloniaUI.Licensing are commercial, and Avalonia's terms ask for no notice, which their sections say. `package.sh` copies the file to the app's `Contents/Resources`, and stops if it's missing. `packaging/mac/check-notices.py` also stops it when the publish's `deps.json` lists a runtime pack or package that no section gives at that version, in its **Version:** line and its table row, or when the publish has a native library no section names. A change that adds a component adds its section (added 2026-11-05, after v1.0.0, which shipped without it). The .NET runtime is the one version that moves with no change in the repository: `global.json` lets the newest 10.0 SDK build, and a self-contained publish carries that SDK's runtime. So the release steps package by hand first, which shows whether the notices need the new runtime.
 
 ## 13. Build phases
 
@@ -511,10 +511,14 @@ what was planned. This is what the build showed, and what it changed.
   - `.githooks/pre-commit` refuses any PDF, and any change holding the account's full name, account name or home folder,
     in UTF-8, UTF-16, Latin-1 or hex. The hooks also check commit messages (`.githooks/commit-msg`), and refuse any PDF
     by its content, whatever its name; a file they can't read refuses the commit.
-  - One exception (owner, 2026-11-05): `THIRD-PARTY-NOTICES.md` keeps other projects' notices word for word, and two
-    credits in them (FreeType's and ICU's) begin with the account name. In that file only, the hook lets the account
-    name stand where one of those surnames, which it lists, follows it. The rest of the file is checked as before.
-    `.githooks/test_check_personal_details.py`, which CI runs, shows that on made-up details.
+  - One exception (owner, 2026-11-05): `THIRD-PARTY-NOTICES.md` keeps other projects' notices word for word, in
+    ```` ```text ```` blocks, and they name many people, any of whom may share the account name. Inside those blocks
+    only, the hook lets the account name stand as a plain word. The full name, the home folder and the account name's
+    encoded forms are checked there too, and the rest of the file is checked as before.
+    `.githooks/test_check_personal_details.py`, which CI runs, shows that on made-up details. The code review of the
+    first form, which let the account name stand before two listed surnames, found that the list gave the account name
+    away to anyone holding those projects' public notices, and that removing the matched text hid a home folder that
+    ran into one of the surnames. The exception now names no one, and removes nothing from the other checks.
   - Tests save with the made-up author `Test Reviewer`, which `Headless` sets before the app starts.
   - CI masks the Developer ID identity in its logs.
 - **Check 12b, a password-protected PDF (the owner's checks, 2026-10-30).** Its markups saved without an author, for

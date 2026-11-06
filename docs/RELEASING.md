@@ -103,7 +103,18 @@ It should list the six secrets above. The list shows only their names.
 
 ## Each release
 
-1. Once `main`'s CI has passed, tag the commit and push the tag. Tags go through the owner, as pushes do. A version
+1. **Package `main` by hand first,** which checks `THIRD-PARTY-NOTICES.md` against what CI's SDK builds. `global.json`
+   lets the newest 10.0 SDK build, and a newer one brings a newer .NET runtime. `package.sh` then stops until the
+   notices' .NET runtime section and row give that version, with the new runtime pack's `LICENSE.TXT` and
+   `THIRD-PARTY-NOTICES.TXT`.
+
+   ```bash
+   gh workflow run ci.yml --ref main --repo coffeemuse/CoffeePDF
+   ```
+
+   Its `Package (macos-15)` job should pass. If it stops at the notices, update them in a pull request, and run it
+   again once that's merged.
+2. Once `main`'s CI has passed, tag the commit and push the tag. Tags go through the owner, as pushes do. A version
    with a suffix, such as `v0.1.0-rc1`, becomes a pre-release.
 
    ```bash
@@ -114,11 +125,11 @@ It should list the six secrets above. The list shows only their names.
    git push origin v0.1.0
    ```
 
-2. CI runs the tests, then `package-mac` builds, signs and notarises the app and its disk image, and staples both.
+3. CI runs the tests, then `package-mac` builds, signs and notarises the app and its disk image, and staples both.
    `release-mac` makes the GitHub release and attaches the image, but only once `stapler validate` passes on it.
    Without the notary's secrets, the image is signed but not notarised. It's kept as the run's artifact for 30 days
    and isn't attached to the release.
-3. **The Gatekeeper check:**
+4. **The Gatekeeper check:**
    1. Download the image from the release page in a browser, so that macOS quarantines it as it would for anyone
       else.
    2. Open the image, drag CoffeePDF to Applications, replacing any earlier build there, and open it.

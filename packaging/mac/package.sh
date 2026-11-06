@@ -18,11 +18,11 @@
 #   OUT_DIR         where the app and the disk image go; packaging/mac/out by default.
 #
 # The steps, as the Healdan Helper's: a self-contained, single-file .NET publish for osx-arm64 with no .pdb, since any
-# file in Contents/MacOS that isn't native code breaks the bundle's signature; the bundle, with the icon make-icon.sh
-# made and the third-party notices (THIRD-PARTY-NOTICES.md) in Contents/Resources; signing inside-out (each native
-# library, the binary, then the bundle), with the hardened runtime and a
-# timestamp when there's an identity; codesign's strict check; notarising and stapling; the disk image, with a link to
-# Applications, signed (and notarised) too. Any failure stops it.
+# file in Contents/MacOS that isn't native code breaks the bundle's signature; check-notices.py's check that
+# THIRD-PARTY-NOTICES.md gives each component the publish carries, at its version; the bundle, with the icon make-icon.sh
+# made and the notices in Contents/Resources; signing inside-out (each native library, the binary, then the bundle),
+# with the hardened runtime and a timestamp when there's an identity; codesign's strict check; notarising and stapling;
+# the disk image, with a link to Applications, signed (and notarised) too. Any failure stops it.
 set -euo pipefail
 
 say() { printf '%s\n' "$*"; }
@@ -98,13 +98,15 @@ fi
 # --- The app --------------------------------------------------------------------------------------------------------
 
 # CoffeePdfiumRid names the platform of CoffeePDF's own PDFium (CoffeePdf.Core.csproj). The core never sees --runtime,
-# and without this it would take the building Mac's, which on an Intel Mac isn't the app's.
+# and without this it would take the building Mac's, which on an Intel Mac isn't the app's. PublishDepsFilePath only
+# says where the deps.json that goes into the binary is written: here, so check-notices.py reads this publish's, never
+# an earlier one's from obj. The binary is the same either way.
 say "Publishing CoffeePDF $version for osx-arm64"
 dotnet publish "$repo/CoffeePdf/CoffeePdf.csproj" \
   --configuration Release --runtime osx-arm64 --self-contained true --output "$work/publish" \
   -p:CoffeePdfiumRid=osx-arm64 -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false \
   -p:Version="$numeric" -p:InformationalVersion="$version" -p:IncludeSourceRevisionInInformationalVersion=false \
-  -nologo
+  -p:PublishDepsFilePath="$work/CoffeePDF.deps.json" -nologo
 
 # Only native code may sit in Contents/MacOS: a managed .dll, a .pdb or a .json there breaks the bundle's signature.
 for file in "$work/publish"/*; do
@@ -121,13 +123,12 @@ lipo "$work/publish/libcoffeepdfium.dylib" -verify_arch arm64 2>/dev/null ||
 # It goes when the patch does (packaging/avalonia-native/README.md).
 cmp -s "$work/publish/libAvaloniaNative.dylib" "$repo/packaging/avalonia-native/libAvaloniaNative.dylib" ||
   die "the publish's libAvaloniaNative.dylib isn't the patched one in packaging/avalonia-native"
-# THIRD-PARTY-NOTICES.md names each native library in its section, so this stops a package with a library whose
-# notices nobody added.
-for library in "$work/publish"/*.dylib; do
-  [ -e "$library" ] || continue
-  grep -qF "\`$(basename "$library")\`" "$notices" ||
-    die "the publish has $(basename "$library"), which THIRD-PARTY-NOTICES.md doesn't name: add its component's section"
-done
+# Each runtime pack and package the publish carries, at its version, and each native library, must have its section in
+# THIRD-PARTY-NOTICES.md. A newer SDK brings a newer .NET runtime with no change in the repository, so that's the
+# usual stop: the runtime's section and row then take the new version, with the new runtime pack's notices.
+[ -f "$work/CoffeePDF.deps.json" ] || die "the publish wrote no CoffeePDF.deps.json, so the notices can't be checked"
+python3 -I "$here/check-notices.py" "$work/CoffeePDF.deps.json" "$notices" "$work/publish" ||
+  die "THIRD-PARTY-NOTICES.md doesn't cover what the publish carries (above)"
 
 say "Building $app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -150,8 +151,6 @@ plutil -lint "$app/Contents/Info.plist" >/dev/null
 printf 'APPL????' > "$app/Contents/PkgInfo"
 chmod 644 "$app/Contents/Info.plist" "$app/Contents/PkgInfo" "$app/Contents/Resources/CoffeePDF.icns" \
   "$app/Contents/Resources/THIRD-PARTY-NOTICES.md"
-cmp -s "$notices" "$app/Contents/Resources/THIRD-PARTY-NOTICES.md" ||
-  die "the bundle's Contents/Resources has no THIRD-PARTY-NOTICES.md, or one that isn't the repository's"
 xattr -cr "$app" 2>/dev/null || true # Finder info or a resource fork would make codesign refuse it
 
 # --- Signing, inside out --------------------------------------------------------------------------------------------

@@ -2,7 +2,8 @@
 
 CoffeePDF's own licence is in [`LICENSE`](LICENSE). This file lists the third-party components the macOS app carries,
 each with its licence and the notice that licence asks to go with it. `packaging/mac/package.sh` copies the file into
-the app, as `CoffeePDF.app/Contents/Resources/THIRD-PARTY-NOTICES.md`, and stops if it's missing.
+the app, as `CoffeePDF.app/Contents/Resources/THIRD-PARTY-NOTICES.md`. It stops if the file is missing, or if
+`packaging/mac/check-notices.py` finds that it doesn't cover what the publish carries.
 
 - **What the app carries** was read from `package.sh`'s publish for `osx-arm64`. `Contents/MacOS/CoffeePDF` is a
   self-contained, single-file app: one binary holding the .NET runtime and every managed assembly. Beside it are the
@@ -11,6 +12,10 @@ the app, as `CoffeePDF.app/Contents/Resources/THIRD-PARTY-NOTICES.md`, and stops
 - **One section per component,** giving its version, its licence, what it puts in the app, where its notice came
   from, and the notice. A change that adds a component to the app adds its row to the table and its section at the
   end. A change of version updates both.
+- **How `check-notices.py` reads it:** each package and runtime pack in the publish's `deps.json` must be named by
+  one section, by its heading or in backticks in its **Version:** line. That line, and the section's row in the table,
+  must begin with the version the publish used. Each native library must be named in backticks in a section. Nothing
+  inside the notices' ```` ```text ```` blocks counts.
 - **Notices are copied, never retyped:** from the package's own licence files or, where the package has none, from
   the upstream repository at the commit or release the package names. Only line endings, trailing spaces and the
   encoding (UTF-8) are made uniform.
@@ -31,7 +36,8 @@ the app, as `CoffeePDF.app/Contents/Resources/THIRD-PARTY-NOTICES.md`, and stops
 
 - **Version:** 10.0.11, the `Microsoft.NETCore.App.Runtime.osx-arm64` package, built from
   [dotnet/dotnet](https://github.com/dotnet/dotnet) at `e2f47b0110ed922f21a1522da67279133ce28f32`. The SDK that
-  `global.json` allows chooses it, so a newer SDK can bring a newer runtime.
+  `global.json` allows chooses it, so a newer SDK can bring a newer runtime. `package.sh` then stops until this
+  section and its row give the new one, with that runtime pack's notices.
 - **Licence:** MIT. The runtime also carries other projects' code, whose notices follow the licence.
 - **In the app:** the runtime, its libraries and the single-file host, all inside `Contents/MacOS/CoffeePDF`.
 - **Notice from:** the package's `LICENSE.TXT` and `THIRD-PARTY-NOTICES.TXT`. The single-file host is the same
