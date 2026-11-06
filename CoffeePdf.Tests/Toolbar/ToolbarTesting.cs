@@ -115,8 +115,10 @@ internal static class ToolbarTesting
     /// </summary>
     public static void Type(Window window, TextBox box, string text, bool enter = true)
     {
+        Dispatcher.UIThread.RunJobs(); // layout and focus pending from opening the window, or the text is lost
         box.Focus();
         box.SelectAll();
+        Dispatcher.UIThread.RunJobs();
         window.KeyTextInput(text);
         if (enter)
             Press(window, Key.Enter);

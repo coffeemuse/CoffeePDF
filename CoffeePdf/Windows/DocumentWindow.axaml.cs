@@ -62,6 +62,10 @@ public partial class DocumentWindow : Window
     public DocumentWindow()
     {
         InitializeComponent();
+        // CoffeePDF's own toolbar drives the viewer, whose own is hidden (toolbar spec §4). Its Print goes through the
+        // window's, so a failure is reported.
+        Toolbar.Attach(Viewer);
+        Toolbar.Print = PrintAndReportAsync;
         ReportError = (heading, detail) => MessageDialog.ShowErrorAsync(this, heading, detail);
         AskToSave = () => MessageDialog.AskToSaveAsync(this, Path.GetFileName(_path) ?? "CoffeePDF");
         PickSaveTarget = async name => (await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
@@ -1040,6 +1044,8 @@ public partial class DocumentWindow : Window
 
     private TextBox? FocusedTextBox() => FocusManager?.GetFocusedElement() as TextBox;
     internal void OnZoomIn(object? sender, EventArgs e) => Viewer.ZoomIn();
+    internal void OnFind(object? sender, EventArgs e) => Toolbar.FocusSearch();
+
     private void OnFindNext(object? sender, EventArgs e) => Viewer.FindNext();
     private void OnFindPrevious(object? sender, EventArgs e) => Viewer.FindPrevious();
     private void OnActualSize(object? sender, EventArgs e) => Viewer.ResetZoom();
