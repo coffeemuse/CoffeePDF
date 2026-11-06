@@ -248,25 +248,28 @@ What this design rests on, and what the probes and the build find. The probes' a
   showed at x 102 and the pinned button at x 134, right after it. Back at 600 it returned to the first state.
   `OverflowChanged` fired once for each change (1 at 200, 2 on return). The panel collapses on its own, outside the
   viewer's template, as the plan expects.
-- **Probe 5 (observed 2026-11-05, keyed run, extended after review).** The page is drawn by a `Grid` in the page host,
-  and a click lands on it only once layout has settled (the page is first laid out at 612 wide, then fits the window), so
-  the probes wait until its bounds stop changing. At the start the states are focus and `:has-document`. Drawing a
-  rectangle with the Shape tool left `SelectedShapeType` at Rectangle. Disarming dropped `SelectedShapeType` to None and
-  the tool to None. Clicking the rectangle's left edge then showed `:shape-selected`, with `SelectedShapeType` still
-  None, so `SelectedShapeType` can't identify a selection: it is None whenever the tool is None. Clicking empty page
-  cleared the state. A click with the Text tool created nothing (the tool went back to None, no state, no annotation).
-  Dragging a box with the Text tool did create a `FreeText` annotation, with the tool at Text and `SelectedShapeType`
-  at Text while armed, and no state beyond pointer-over. Typing into it changed no state, and the focus stayed on the
-  viewer throughout. Clicking empty page next, with the Text tool still armed, showed `:editing-text` together with
-  `:shape-selected` (the new click starts another box, and in headless input that click threw an
-  `ObjectDisposedException` from the viewer's pointer handler). Disarming and clicking the dragged text box's left edge
-  showed no state at all. The Shape tool with `SelectedShapeType` set to `ShapeType.Text` ignored it: it drew a rectangle
-  (`Square` annotation, `SelectedShapeType` Rectangle), and clicking its edge showed `:shape-selected` as for any shape
-  (on some runs an edge click missed and showed nothing, so edge clicks in tests need care). The page ended with
-  `FreeText` and `Square` annotations. So the only thing that told a text box from a shape was `:editing-text`, which
-  appears while a box is being edited and not when an existing one is selected; a selected text box showed no state, and
-  nothing found tells a selected text box from a selected shape. Task 6's `Selection()` can use `:editing-text` for
-  editing, and `:shape-selected` means a shape or a text box that is not editing; it can't tell those apart from states.
+- **Probe 5 (observed 2026-11-05, keyed run; probes 5 and 5b, eight runs each, identical but for timings).** Input
+  needs a pointer move to the spot before the press: without it, headless clicks and drags were lost intermittently
+  (probe 3's stamp failed to place in one of eight early runs, and a Text-tool drag made a box in two of six). The probes'
+  `Click` and `Drag` now move first, and every later run agreed. The page is also laid out twice (at its own size, then
+  fitted to the window), so a click lands only once its bounds stop changing.
+  *Shapes.* At the start the states are focus and `:has-document`. Drawing with the Shape tool left `SelectedShapeType`
+  at Rectangle while armed. Disarming set it, and the tool, to None, and it stayed None while a shape was selected, so
+  `SelectedShapeType` can't identify a selection. Clicking the edge of a drawn rectangle showed `:shape-selected` for the
+  second rectangle (the Shape tool with `SelectedShapeType` set to `ShapeType.Text`, which ignored it and drew a plain
+  rectangle, a `Square`) and showed nothing for the first rectangle's edge at x 200, y 460, so an edge click can miss.
+  *Text.* A click with the Text tool created nothing (no annotation, tool back to None, no state). A drag with the Text
+  tool, from page point 250,350 to 420,290, created a `FreeText` annotation of about 170 by 24 points at 250,326 to
+  420,350 (not the dragged rectangle). Right after the drag the states were focus, `:has-document` and pointer-over,
+  with focus on the viewer and no visible text box. After `KeyTextInput("Probe")`, `:editing-text` and `:shape-selected`
+  both appeared, focus moved to a text box, and that text box's `Text` was "Probe", so edit mode was established by
+  typing, not by the drag. `:editing-text` stayed after the tool was set to None, and a click on the box's centre kept
+  it. A click on empty page ended it: the states cleared, the text box left the tree and focus went back to the viewer.
+  Clicking the left edge of that existing box (x 250, mid-height) then showed `:shape-selected` alone, with no
+  `:editing-text` and focus on the viewer. A click on an existing box's interior, outside editing, wasn't run.
+  *What tells them apart.* While editing, `:editing-text` (with `:shape-selected`) says a text box. A selected existing
+  text box and a selected shape both show only `:shape-selected`, and nothing in the states or `SelectedShapeType`
+  tells them apart; only the annotation types from `GetAnnotationsAsync` (`FreeText`, `Square`) do.
 - **Probe 6 (observed 2026-11-05, keyed run).** The built-in format menus offer six fonts in this order: Helvetica,
   Arial, Times New Roman, Courier, Georgia, Verdana. They offer fifteen sizes: 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32,
   36, 48, 60 and 72. The colour swatch panel holds the palette in this order: black, #404040, grey (#808080), #BFBFBF,

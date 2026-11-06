@@ -27,14 +27,23 @@ internal static class ToolbarTesting
             .MinBy(c => c.Bounds.Width) ?? throw new InvalidOperationException("No page is drawn yet");
     }
 
-    /// <summary>Whether the first page is drawn yet, so a test can wait for it before clicking on it.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PdfViewer, System.Runtime.CompilerServices.StrongBox<Rect>> LastBounds = new();
+
+    /// <summary>
+    /// Whether the first page is drawn and settled, so a test can wait for it before clicking on it. The page is laid out
+    /// at its own size and then fitted to the window, and a click lands on it only after that, so this is true once the
+    /// page's bounds are the same on two checks running, and a click on its centre reaches it. Poll it
+    /// (<c>TestWindows.WaitForAsync(() =&gt; HasPage(viewer))</c>): the first check of a viewer is never true.
+    /// </summary>
     public static bool HasPage(PdfViewer viewer)
     {
         try
         {
-            // Drawn is not enough: the page is laid out to fit twice, and a click on it lands only once it's settled.
             var page = FirstPage(viewer);
-            if (page.Bounds.Width <= 100 || TopLevel.GetTopLevel(viewer) is not { } top)
+            var last = LastBounds.GetOrCreateValue(viewer);
+            var unchanged = last.Value == page.Bounds;
+            last.Value = page.Bounds;
+            if (!unchanged || page.Bounds.Width <= 100 || TopLevel.GetTopLevel(viewer) is not { } top)
                 return false;
             var centre = page.TranslatePoint(new Point(page.Bounds.Width / 2, page.Bounds.Height / 2), top);
             return centre is { } at && top.InputHitTest(at) is Visual hit && (hit == page || page.IsVisualAncestorOf(hit));
@@ -56,6 +65,8 @@ internal static class ToolbarTesting
 
     public static void Click(Window window, Point point)
     {
+        window.MouseMove(point);
+        Dispatcher.UIThread.RunJobs();
         window.MouseDown(point, MouseButton.Left);
         window.MouseUp(point, MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
@@ -71,6 +82,8 @@ internal static class ToolbarTesting
 
     public static void Drag(Window window, Point from, Point to)
     {
+        window.MouseMove(from);
+        Dispatcher.UIThread.RunJobs();
         window.MouseDown(from, MouseButton.Left);
         window.MouseMove(new Point((from.X + to.X) / 2, (from.Y + to.Y) / 2), RawInputModifiers.LeftMouseButton);
         window.MouseMove(to, RawInputModifiers.LeftMouseButton);

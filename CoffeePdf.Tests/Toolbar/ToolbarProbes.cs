@@ -43,17 +43,7 @@ public sealed class ToolbarProbes(ITestOutputHelper output) : IDisposable
         var window = new Window { Content = viewer, Width = 1000, Height = 760 };
         window.Show();
         await Viewers.ShowAndLoadAsync(viewer, () => viewer.Source = path);
-        // Drawn, and laid out the same on two checks running: the page is fitted to the window after it first appears.
-        var last = default(Rect);
-        await TestWindows.WaitForAsync(() =>
-        {
-            if (!HasPage(viewer))
-                return false;
-            var now = FirstPage(viewer).Bounds;
-            var settled = now == last;
-            last = now;
-            return settled;
-        });
+        await TestWindows.WaitForAsync(() => HasPage(viewer));
         return (window, viewer);
     }
 
@@ -228,7 +218,7 @@ public sealed class ToolbarProbes(ITestOutputHelper output) : IDisposable
             viewer.ActiveTool = PdfViewerTool.None;
             Click(window, OnPage(viewer, window, 300, 300));
             Log("After clicking the text box with no tool");
-            // A text box by dragging, with the Text tool and then with the Shape tool set to Text.
+            // The Shape tool set to Text.
             void Try(string what, Action act)
             {
                 try
@@ -241,21 +231,6 @@ public sealed class ToolbarProbes(ITestOutputHelper output) : IDisposable
                 }
             }
             void LogFocus(string what) => seen.Add($"{what}: focus on {Describe(window.FocusManager?.GetFocusedElement())}");
-            viewer.ActiveTool = PdfViewerTool.Text;
-            Try("The Text-tool drag", () => Drag(window, OnPage(viewer, window, 250, 350), OnPage(viewer, window, 420, 290)));
-            Log("After dragging a box with the Text tool");
-            LogFocus("After that drag");
-            window.KeyTextInput("Probe");
-            Dispatcher.UIThread.RunJobs();
-            Log("After typing into it");
-            LogFocus("After typing");
-            Try("The click on empty page after the Text-tool drag", () => Click(window, OnPage(viewer, window, 500, 100)));
-            Log("After clicking an empty part of the page");
-            viewer.ActiveTool = PdfViewerTool.None;
-            Try("The click on the Text-tool box's edge", () => Click(window, OnPage(viewer, window, 250, 320)));
-            Log("After clicking the dragged text box's left edge with no tool");
-            LogFocus("After that click");
-            seen.Add($"On the page so far: {string.Join(", ", (await viewer.GetAnnotationsAsync(0, CancellationToken.None)).Select(a => a.Type))}");
             Try("The click on empty page", () => Click(window, OnPage(viewer, window, 500, 100)));
             viewer.SelectedShapeType = ShapeType.Text;
             viewer.ActiveTool = PdfViewerTool.Shape;
@@ -268,6 +243,84 @@ public sealed class ToolbarProbes(ITestOutputHelper output) : IDisposable
             LogFocus("After that click");
             var types = (await viewer.GetAnnotationsAsync(0, CancellationToken.None)).Select(a => a.Type);
             seen.Add($"On the page: {string.Join(", ", types)}");
+            window.Close();
+            return seen;
+        });
+
+        Print(lines);
+    }
+
+    /// <summary>Probe 5b: what a text box made by dragging with the Text tool does, and what a click on it shows.</summary>
+    [PdfViewerFact]
+    public async Task What_a_text_box_made_by_dragging_shows()
+    {
+        var path = Fixture();
+
+        var lines = await Headless.RunAsync(async () =>
+        {
+            var (window, viewer) = await OpenAsync(path);
+            var seen = new List<string>();
+            void Log(string what) => seen.Add($"{what}: [{States(viewer)}], tool {viewer.ActiveTool}, shape {viewer.SelectedShapeType}");
+            void LogBoxes(string what)
+            {
+                var boxes = viewer.GetVisualDescendants().OfType<TextBox>().ToList();
+                seen.Add($"{what}: {boxes.Count} text boxes ({boxes.Count(b => b.IsEffectivelyVisible)} visible, texts [{string.Join("|", boxes.Select(b => b.Text))}]), focus on {Describe(window.FocusManager?.GetFocusedElement())}");
+            }
+            async Task LogAnnotationsAsync(string what)
+            {
+                var found = await viewer.GetAnnotationsAsync(0, CancellationToken.None);
+                seen.Add($"{what}: {(found.Count == 0 ? "none" : string.Join("; ", found.Select(a => $"{a.Type} {a.Bounds.Left:0},{a.Bounds.Bottom:0} to {a.Bounds.Right:0},{a.Bounds.Top:0}")))}");
+            }
+            void Try(string what, Action act)
+            {
+                try
+                {
+                    act();
+                }
+                catch (Exception e)
+                {
+                    seen.Add($"{what} threw {e.GetType().Name}");
+                }
+            }
+            LogBoxes("Before the drag");
+            viewer.ActiveTool = PdfViewerTool.Text;
+            Try("The drag", () => Drag(window, OnPage(viewer, window, 250, 350), OnPage(viewer, window, 420, 290)));
+            Log("After dragging a box with the Text tool");
+            LogBoxes("After the drag");
+            // The box is added to the document after the drag, so wait for it, and say whether it came.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            var box = (await viewer.GetAnnotationsAsync(0, CancellationToken.None)).FirstOrDefault(a => a.Type == PdfAnnotationType.FreeText);
+            while (box is null && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(1);
+                Dispatcher.UIThread.RunJobs();
+                box = (await viewer.GetAnnotationsAsync(0, CancellationToken.None)).FirstOrDefault(a => a.Type == PdfAnnotationType.FreeText);
+            }
+            if (box is null)
+                seen.Add("No FreeText annotation appeared after the drag within 10 seconds");
+            await LogAnnotationsAsync("Annotations after the drag");
+            Try("Typing", () =>
+            {
+                window.KeyTextInput("Probe");
+                Dispatcher.UIThread.RunJobs();
+            });
+            Log("After typing");
+            LogBoxes("After typing");
+            viewer.ActiveTool = PdfViewerTool.None;
+            Log("After disarming");
+            await LogAnnotationsAsync("Annotations after disarming");
+            var midY = box is null ? 337 : (box.Bounds.Bottom + box.Bounds.Top) / 2;
+            var left = box?.Bounds.Left ?? 250;
+            var centreX = box is null ? 335 : (box.Bounds.Left + box.Bounds.Right) / 2;
+            Try("The click on the interior", () => Click(window, OnPage(viewer, window, centreX, midY)));
+            Log("After clicking the box's centre");
+            LogBoxes("After that click");
+            Try("The click on empty page", () => Click(window, OnPage(viewer, window, 500, 100)));
+            Log("After clicking empty page");
+            Try("The click on the edge", () => Click(window, OnPage(viewer, window, left, midY)));
+            Log("After clicking the box's left edge");
+            LogBoxes("After that click");
+            await LogAnnotationsAsync("Annotations at the end");
             window.Close();
             return seen;
         });
