@@ -34,7 +34,58 @@
           </DropDownButton.Flyout>
         </DropDownButton>
       </StackPanel>
-      <pdfc:OverflowToolbarPanel x:Name="Tools" Grid.Column="1" Spacing="2" Margin="12,0" HorizontalAlignment="Center" />
+      <pdfc:OverflowToolbarPanel x:Name="Tools" Grid.Column="1" Spacing="2" Margin="12,0" HorizontalAlignment="Center">
+        <!-- The tools, in the Tools menu's order (spec §3). Each Tag is a PdfViewerTool's name. -->
+        <ToggleButton Classes="bar tool" Tag="Highlight" ToolTip.Tip="Highlight (⌃⌘H)" AutomationProperties.Name="Highlight" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Highlight}" />
+        </ToggleButton>
+        <ToggleButton Classes="bar tool" Tag="Underline" ToolTip.Tip="Underline (⌃⌘U)" AutomationProperties.Name="Underline" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Underline}" />
+        </ToggleButton>
+        <ToggleButton Classes="bar tool" Tag="Strikeout" ToolTip.Tip="Strikethrough (⌃⌘S)" AutomationProperties.Name="Strikethrough" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Strikethrough}" />
+        </ToggleButton>
+        <ToggleButton Classes="bar tool" Tag="Squiggly" ToolTip.Tip="Squiggly" AutomationProperties.Name="Squiggly" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Squiggly}" />
+        </ToggleButton>
+        <ToggleButton Classes="bar tool" Tag="Draw" ToolTip.Tip="Draw" AutomationProperties.Name="Draw" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Draw}" />
+        </ToggleButton>
+        <ToggleButton Classes="bar tool" Tag="Text" ToolTip.Tip="Text (⌃⌘T)" AutomationProperties.Name="Text" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Text}" />
+        </ToggleButton>
+        <ToggleSplitButton x:Name="ShapesButton" Classes="bar tool" Tag="Shape" ToolTip.Tip="Shapes" AutomationProperties.Name="Shapes" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Shapes}" />
+          <ToggleSplitButton.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedLeft" />
+          </ToggleSplitButton.Flyout>
+        </ToggleSplitButton>
+        <ToggleButton Classes="bar tool" Tag="Note" ToolTip.Tip="Note (⌃⌘N)" AutomationProperties.Name="Note" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Note}" />
+        </ToggleButton>
+        <ToggleButton Classes="bar tool" Tag="Link" ToolTip.Tip="Link" AutomationProperties.Name="Link" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Link}" />
+        </ToggleButton>
+        <ToggleSplitButton x:Name="StampButton" Classes="bar tool" Tag="Stamp" ToolTip.Tip="Stamp" AutomationProperties.Name="Stamp" Click="OnTool">
+          <PathIcon Data="{StaticResource Icon.Stamp}" />
+          <ToggleSplitButton.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft" Opening="OnStampOpening">
+              <StackPanel Spacing="8" Width="220">
+                <ListBox x:Name="StampLabelList" MaxHeight="260" AutomationProperties.Name="Stamp Labels" SelectionChanged="OnStampLabelChosen" />
+                <ComboBox x:Name="StampStyleBox" HorizontalAlignment="Stretch" AutomationProperties.Name="Stamp Style" ToolTip.Tip="Stamp Style" SelectionChanged="OnStampStyleChosen" />
+                <CheckBox x:Name="StampDateBox" Content="Include Date" IsCheckedChanged="OnStampDateChanged" />
+              </StackPanel>
+            </Flyout>
+          </ToggleSplitButton.Flyout>
+        </ToggleSplitButton>
+        <!-- The tools that don't fit, when the window is narrow (spec §3). -->
+        <Button x:Name="MoreButton" Classes="bar" pdfc:OverflowToolbarPanel.IsOverflowIndicator="True" ToolTip.Tip="More Tools" AutomationProperties.Name="More Tools">
+          <PathIcon Data="{StaticResource Icon.More}" />
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedLeft" />
+          </Button.Flyout>
+        </Button>
+      </pdfc:OverflowToolbarPanel>
       <StackPanel x:Name="RightGroup" Grid.Column="2" Orientation="Horizontal" Spacing="4">
         <TextBox x:Name="SearchBox" Width="210" VerticalAlignment="Center" PlaceholderText="Search"
                  ToolTip.Tip="Search (⌘F)" AutomationProperties.Name="Search"

@@ -1,8 +1,11 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using CoffeePdf.Windows;
 
 namespace CoffeePdf.Toolbar;
@@ -16,11 +19,17 @@ public partial class DocumentToolbar : UserControl
     private PdfViewer? _viewer;
     private SidebarMode _sidebar = SidebarMode.Thumbnails; // the tab the sidebar button brings back (spec §3)
     private bool _showingSearchOptions;                    // the boxes are being set from the viewer, not by a person
+    private static readonly PdfStampStyle[] StampStyles = Enum.GetValues<PdfStampStyle>();
+    private IReadOnlyList<string> _stampLabels = []; // the viewer's labels as they first were, in the menu's order
+    private bool _showingStamp;                      // the stamp menu is being set from the viewer, not by a person
 
     public DocumentToolbar()
     {
         InitializeComponent();
         FillZoomMenu();
+        foreach (var shape in ToolbarRules.Shapes)
+            ShapesMenu.Items.Add(Item(shape.ToString(), () => ChooseShape(shape)));
+        Tools.OverflowChanged += (_, _) => FillMoreMenu();
     }
 
     /// <summary>Print, as the window does it, so a failure is reported, not lost (spec §4).</summary>
@@ -29,16 +38,26 @@ public partial class DocumentToolbar : UserControl
     /// <summary>The zoom button's menu. A flyout is outside the XAML name scope, so it's found through its button.</summary>
     internal MenuFlyout ZoomMenu => (MenuFlyout)ZoomMenuButton.Flyout!;
 
+    /// <summary>The Shapes button's menu. A flyout is outside the XAML name scope, so it's found through its button.</summary>
+    internal MenuFlyout ShapesMenu => (MenuFlyout)ShapesButton.Flyout!;
+
+    internal Flyout StampFlyout => (Flyout)StampButton.Flyout!;
+
+    internal MenuFlyout MoreMenu => (MenuFlyout)MoreButton.Flyout!;
+
     private PdfViewer Viewer => _viewer ?? throw new InvalidOperationException("The toolbar has no viewer yet");
 
     /// <summary>Drives <paramref name="viewer"/> from now on. The window calls it once, as it's built.</summary>
     public void Attach(PdfViewer viewer)
     {
         _viewer = viewer;
+        _stampLabels = viewer.StampLabels;
+        ShowStamp();
         viewer.PropertyChanged += OnViewerPropertyChanged;
         ShowSidebar();
         ShowSearch();
         ShowAvailability();
+        ShowTools();
     }
 
     /// <summary>Puts the cursor in the search box, for Edit › Find… (spec §4).</summary>
@@ -50,7 +69,9 @@ public partial class DocumentToolbar : UserControl
 
     private void OnViewerPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (e.Property == PdfViewer.CurrentPageProperty || e.Property == PdfViewer.PageCountProperty)
+        if (e.Property == PdfViewer.ActiveToolProperty || e.Property == PdfViewer.SelectedShapeTypeProperty)
+            ShowTools();
+        else if (e.Property == PdfViewer.CurrentPageProperty || e.Property == PdfViewer.PageCountProperty)
             ShowPage();
         else if (e.Property == PdfViewer.ZoomLevelProperty)
             ShowZoom();
@@ -70,6 +91,12 @@ public partial class DocumentToolbar : UserControl
         SearchBox.IsEnabled = SearchOptionsButton.IsEnabled = PrintButton.IsEnabled = open;
         ShowPage();
         ShowZoom();
+        // The tools hide while the window may not be marked up, as the built-in toolbar's did, and no hidden tool stays
+        // armed (spec §4, §5).
+        Tools.IsVisible = Viewer.CanEditAnnotations;
+        Tools.IsEnabled = open;
+        if (!Viewer.CanEditAnnotations && Viewer.ActiveTool != PdfViewerTool.None)
+            Viewer.ActiveTool = PdfViewerTool.None;
     }
 
     // --- The sidebar --------------------------------------------------------------------------------------------------
@@ -260,6 +287,112 @@ public partial class DocumentToolbar : UserControl
             Viewer.SearchMatchWholeWord = WholeWordBox.IsChecked == true;
     }
 
+    // --- The tools ------------------------------------------------------------------------------------------------------
+
+    private IEnumerable<Control> ToolButtons => Tools.Children.Where(c => c.Classes.Contains("tool"));
+
+    private static PdfViewerTool ToolOf(Control button) => Enum.Parse<PdfViewerTool>((string)button.Tag!);
+
+    /// <summary>The button for <paramref name="tool"/>, for the tests.</summary>
+    internal Control ButtonFor(PdfViewerTool tool) => ToolButtons.Single(b => ToolOf(b) == tool);
+
+    /// <summary>Arms <paramref name="tool"/>, or disarms it when it's armed already, so text selection comes back (spec §3).</summary>
+    internal void Arm(PdfViewerTool tool)
+    {
+        Viewer.ActiveTool = Viewer.ActiveTool == tool ? PdfViewerTool.None : tool;
+        ShowTools();
+    }
+
+    private void OnTool(object? sender, RoutedEventArgs e) => Arm(ToolOf((Control)sender!));
+
+    /// <summary>Shows which tool is armed, however it was armed: here, the Tools menu, or the viewer itself.</summary>
+    private void ShowTools()
+    {
+        foreach (var button in ToolButtons)
+        {
+            var armed = Viewer.ActiveTool == ToolOf(button);
+            if (button is ToggleButton toggle)
+                toggle.IsChecked = armed;
+            else if (button is ToggleSplitButton split)
+                split.IsChecked = armed;
+        }
+    }
+
+    internal void ChooseShape(ShapeType shape)
+    {
+        Viewer.SelectedShapeType = shape;
+        Viewer.ActiveTool = PdfViewerTool.Shape;
+    }
+
+    /// <summary>
+    /// Arms the Stamp tool with <paramref name="label"/>. Nothing public chooses the label the tool places, which is the
+    /// first in StampLabels, so the label goes first there (spec §6, probe 3).
+    /// </summary>
+    internal void ChooseStampLabel(string label)
+    {
+        Viewer.StampLabels = ToolbarRules.WithLabelFirst(_stampLabels, label);
+        Viewer.ActiveTool = PdfViewerTool.Stamp;
+    }
+
+    private void ShowStamp()
+    {
+        _showingStamp = true;
+        StampLabelList.ItemsSource = _stampLabels;
+        StampLabelList.SelectedItem = Viewer.StampLabels.FirstOrDefault();
+        StampStyleBox.ItemsSource = StampStyles.Select(PdfViewer.StampStyleDisplayName).ToList();
+        StampStyleBox.SelectedIndex = Array.IndexOf(StampStyles, Viewer.StampStyle);
+        StampDateBox.IsChecked = Viewer.IncludeStampDate;
+        _showingStamp = false;
+    }
+
+    private void OnStampOpening(object? sender, EventArgs e) => ShowStamp();
+
+    private void OnStampLabelChosen(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_showingStamp || StampLabelList.SelectedItem is not string label)
+            return;
+        ChooseStampLabel(label);
+        StampFlyout.Hide();
+    }
+
+    private void OnStampStyleChosen(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_showingStamp && StampStyleBox.SelectedIndex >= 0)
+            Viewer.StampStyle = StampStyles[StampStyleBox.SelectedIndex];
+    }
+
+    private void OnStampDateChanged(object? sender, RoutedEventArgs e)
+    {
+        if (!_showingStamp)
+            Viewer.IncludeStampDate = StampDateBox.IsChecked == true;
+    }
+
+    /// <summary>
+    /// Lists the tools that don't fit in the More menu, rebuilt each time the panel says which (spec §4). Shapes and Stamp
+    /// bring their own menus as submenus.
+    /// </summary>
+    private void FillMoreMenu()
+    {
+        MoreMenu.Items.Clear();
+        foreach (var button in Tools.OverflowedChildren.Where(c => c.Classes.Contains("tool")))
+        {
+            var tool = ToolOf(button);
+            var item = new MenuItem
+            {
+                Header = AutomationProperties.GetName(button),
+                Icon = new PathIcon { Data = ((button as ContentControl)?.Content as PathIcon)?.Data },
+            };
+            if (tool == PdfViewerTool.Shape)
+                foreach (var shape in ToolbarRules.Shapes)
+                    item.Items.Add(Item(shape.ToString(), () => ChooseShape(shape)));
+            else if (tool == PdfViewerTool.Stamp)
+                foreach (var label in _stampLabels)
+                    item.Items.Add(Item(label, () => ChooseStampLabel(label)));
+            else
+                item.Command = new ActionCommand(() => Arm(tool));
+            MoreMenu.Items.Add(item);
+        }
+    }
     // --- Print ----------------------------------------------------------------------------------------------------------
 
     private async void OnPrint(object? sender, RoutedEventArgs e) => await Print();

@@ -1,5 +1,9 @@
+using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CoffeePdf.Tests.Fixtures;
@@ -288,5 +292,228 @@ public sealed class DocumentToolbarTests : IDisposable
         });
 
         Assert.Contains("“fixture.pdf” couldn’t be printed.", Assert.Single(errors));
+    }
+
+    private static readonly PdfViewerTool[] ToolsInOrder =
+    [
+        PdfViewerTool.Highlight, PdfViewerTool.Underline, PdfViewerTool.Strikeout, PdfViewerTool.Squiggly, PdfViewerTool.Draw,
+        PdfViewerTool.Text, PdfViewerTool.Shape, PdfViewerTool.Note, PdfViewerTool.Link, PdfViewerTool.Stamp,
+    ];
+
+    private static bool ShowsArmed(Control button) => button switch
+    {
+        ToggleButton toggle => toggle.IsChecked == true,
+        ToggleSplitButton split => split.IsChecked,
+        _ => false,
+    };
+
+    [PdfViewerFact]
+    public async Task Each_tool_button_arms_its_tool_and_a_second_click_disarms_it()
+    {
+        var path = Fixture();
+
+        var wrong = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            // Wide enough that no tool overflows, even with the Text tool's three format menus showing.
+            window.Width = 1400;
+            await TestWindows.WaitForAsync(() => window.Toolbar.Bounds.Width >= 1400 && window.Toolbar.Tools.OverflowedChildren.Count == 0);
+            var wrong = new List<string>();
+            foreach (var tool in ToolsInOrder)
+            {
+                var button = window.Toolbar.ButtonFor(tool);
+                Click(window, button, across: 0.3);
+                if (window.Viewer.ActiveTool != tool || !ShowsArmed(button))
+                    wrong.Add($"{tool}: armed {window.Viewer.ActiveTool}, shown {ShowsArmed(button)}");
+                Click(window, button, across: 0.3);
+                if (window.Viewer.ActiveTool != PdfViewerTool.None || ShowsArmed(button))
+                    wrong.Add($"{tool} again: armed {window.Viewer.ActiveTool}, shown {ShowsArmed(button)}");
+            }
+            return wrong;
+        });
+
+        Assert.Empty(wrong);
+    }
+
+    [PdfViewerFact]
+    public async Task The_tools_are_in_the_Tools_menus_order_and_follow_it()
+    {
+        var path = Fixture();
+
+        var (order, noteShown, highlightShown) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var order = window.Toolbar.Tools.Children.Where(c => c.Classes.Contains("tool")).Select(c => (string)c.Tag!).ToList();
+            window.OnTool(window.MenuItem("Note"), EventArgs.Empty);
+            return (order, ShowsArmed(window.Toolbar.ButtonFor(PdfViewerTool.Note)), ShowsArmed(window.Toolbar.ButtonFor(PdfViewerTool.Highlight)));
+        });
+
+        Assert.Equal(ToolsInOrder.Select(t => t.ToString()), order);
+        Assert.True(noteShown);
+        Assert.False(highlightShown);
+    }
+
+    [PdfViewerFact]
+    public async Task Read_only_hides_the_tools_and_disarms_an_armed_one()
+    {
+        var path = Fixture();
+
+        var (shown, tool) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Toolbar.Arm(PdfViewerTool.Highlight);
+            window.Viewer.IsReadOnly = true; // as ApplyMode does for a read-only copy (v1 spec §6.1)
+            await TestWindows.WaitForAsync(() => !window.Toolbar.Tools.IsVisible);
+            return (window.Toolbar.Tools.IsVisible, window.Viewer.ActiveTool);
+        });
+
+        Assert.False(shown);
+        Assert.Equal(PdfViewerTool.None, tool);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Shapes_menu_arms_the_Shape_tool_with_the_shape_chosen()
+    {
+        var path = Fixture();
+
+        var (headers, shape, tool) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var items = window.Toolbar.ShapesMenu.Items.OfType<MenuItem>().ToList();
+            items.Single(i => (string?)i.Header == "Star").Command!.Execute(null);
+            return (items.Select(i => (string?)i.Header).ToList(), window.Viewer.SelectedShapeType, window.Viewer.ActiveTool);
+        });
+
+        Assert.Equal(["Line", "Arrow", "Rectangle", "Circle", "Polygon", "Star"], headers);
+        Assert.Equal(ShapeType.Star, shape);
+        Assert.Equal(PdfViewerTool.Shape, tool);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Stamp_menu_arms_the_Stamp_tool_with_the_label_chosen_first()
+    {
+        var path = Fixture();
+
+        var (labels, chosen, offered, tool) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var offered = window.Toolbar.StampLabelList.Items.OfType<string>().ToList();
+            window.Toolbar.StampLabelList.SelectedItem = offered[2];
+            return (window.Viewer.StampLabels, offered[2], offered, window.Viewer.ActiveTool);
+        });
+
+        Assert.Equal(chosen, labels[0]);
+        Assert.Equal(offered.Count, labels.Count);
+        Assert.Equal(PdfViewerTool.Stamp, tool);
+    }
+
+    [PdfViewerFact]
+    public async Task A_stamp_lands_with_the_label_chosen()
+    {
+        // Probe 3's answer, kept: nothing public chooses the label, so the toolbar puts it first in StampLabels.
+        var path = Fixture();
+
+        var (saved, name) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var label = window.Toolbar.StampLabelList.Items.OfType<string>().ElementAt(3);
+            await TestWindows.WaitForAsync(() => HasPage(window.Viewer));
+            window.Toolbar.ChooseStampLabel(label);
+            var added = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.Viewer.AnnotationAdded += (_, _) => added.TrySetResult();
+            Click(window, OnPage(window.Viewer, window, 306, 400));
+            await added.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            using var bytes = new MemoryStream();
+            await window.Viewer.SaveDocumentAsync(bytes);
+            return (System.Text.Encoding.Latin1.GetString(bytes.ToArray()), PdfViewer.StampNameForLabel(label));
+        });
+
+        Assert.Matches($@"/Name\s*/{name}\b", saved);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Stamp_menu_sets_the_style_and_the_date()
+    {
+        var path = Fixture();
+
+        var (style, date, wasDate) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var wasDate = window.Viewer.IncludeStampDate;
+            window.Toolbar.StampStyleBox.SelectedIndex = Array.IndexOf(Enum.GetValues<PdfStampStyle>(), PdfStampStyle.Legal);
+            window.Toolbar.StampDateBox.IsChecked = !wasDate;
+            return (window.Viewer.StampStyle, window.Viewer.IncludeStampDate, wasDate);
+        });
+
+        Assert.Equal(PdfStampStyle.Legal, style);
+        Assert.Equal(!wasDate, date);
+    }
+
+    [PdfViewerFact]
+    public async Task A_narrow_window_moves_tools_into_the_More_menu_and_they_still_arm()
+    {
+        var path = Fixture();
+
+        var (overflowed, items, armed, expected) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Width = window.MinWidth;
+            await TestWindows.WaitForAsync(() => window.Toolbar.Tools.OverflowedChildren.Count > 0 && window.Toolbar.MoreMenu.Items.Count > 0);
+            var plain = window.Toolbar.MoreMenu.Items.OfType<MenuItem>().First(i => i.Command is not null);
+            var expected = window.Toolbar.Tools.OverflowedChildren.First(c => (string?)AutomationProperties.GetName(c) == (string?)plain.Header);
+            plain.Command!.Execute(null);
+            return (window.Toolbar.Tools.OverflowedChildren.Count(c => c.Classes.Contains("tool")), window.Toolbar.MoreMenu.Items.Count,
+                window.Viewer.ActiveTool.ToString(), (string)expected.Tag!);
+        });
+
+        Assert.Equal(overflowed, items);
+        Assert.Equal(expected, armed);
+    }
+
+    [PdfViewerFact]
+    public async Task At_its_minimum_width_everything_but_the_tools_fits()
+    {
+        var path = Fixture();
+
+        var (leftEnd, toolsStart, toolsEnd, rightStart, rightEnd, width) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Width = window.MinWidth;
+            await TestWindows.WaitForAsync(() => window.Toolbar.Bounds.Width <= window.MinWidth);
+            var t = window.Toolbar;
+            double X(Control c, double at) => c.TranslatePoint(new Point(at, 0), t)!.Value.X;
+            return (X(t.LeftGroup, t.LeftGroup.Bounds.Width), X(t.Tools, 0), X(t.Tools, t.Tools.Bounds.Width),
+                X(t.RightGroup, 0), X(t.RightGroup, t.RightGroup.Bounds.Width), t.Bounds.Width);
+        });
+
+        Assert.True(leftEnd <= toolsStart, $"The left group ends at {leftEnd}, past the tools' start at {toolsStart}");
+        Assert.True(toolsEnd <= rightStart, $"The tools end at {toolsEnd}, past the right group's start at {rightStart}");
+        Assert.True(rightEnd <= width, $"The right group ends at {rightEnd}, past the toolbar's width {width}");
+    }
+
+    [PdfViewerFact]
+    public async Task Every_button_has_a_name_and_a_tooltip_with_its_shortcut()
+    {
+        var path = Fixture();
+
+        var (missing, tips) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            // The logical tree: the controls the toolbar declares, not the parts of their templates (a split button's
+            // template holds two unnamed buttons of its own).
+            var controls = window.Toolbar.GetLogicalDescendants().OfType<Control>()
+                .Where(c => c is Button or SplitButton or TextBox).ToList();
+            var missing = controls.Where(c => string.IsNullOrEmpty(AutomationProperties.GetName(c)) || ToolTip.GetTip(c) is null)
+                .Select(c => c.Name ?? c.GetType().Name).ToList();
+            var tips = ToolsInOrder.ToDictionary(t => t, t => ToolTip.GetTip(window.Toolbar.ButtonFor(t)) as string);
+            return (missing, tips);
+        });
+
+        Assert.Empty(missing);
+        Assert.Equal("Highlight (⌃⌘H)", tips[PdfViewerTool.Highlight]);
+        Assert.Equal("Underline (⌃⌘U)", tips[PdfViewerTool.Underline]);
+        Assert.Equal("Strikethrough (⌃⌘S)", tips[PdfViewerTool.Strikeout]);
+        Assert.Equal("Text (⌃⌘T)", tips[PdfViewerTool.Text]);
+        Assert.Equal("Note (⌃⌘N)", tips[PdfViewerTool.Note]);
     }
 }
