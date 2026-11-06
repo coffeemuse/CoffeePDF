@@ -48,7 +48,7 @@
 
 | Piece | What | Status |
 |---|---|---|
-| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05; built on that date ([plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md)); the owner's checks on the Mac next; Fluent's notice added to `THIRD-PARTY-NOTICES.md` 2026-11-06, after #16 merged |
+| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05; built on that date ([plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md)); Fluent's notice added to `THIRD-PARTY-NOTICES.md` 2026-11-06, after #16 merged; the owner's checks on the Mac under way (2026-11-06): 1 to 5 passed, check 1's swatch fixed, and check 6 found that the PdfViewer can't restyle a selection from outside it, so the format menus hide while markup is selected (the spec's §10) |
 
 ## v2
 
@@ -61,6 +61,11 @@ CoffeePDF's own toolbar (After v1.0).
 - Legal tooling: Bates numbering, exhibit stamps, a doc # footer stamp, bundles from several Healdan documents.
 
 ## Backlog
+
+- **Restyle a selected markup from CoffeePDF's toolbar** once a PdfViewer allows it. The PdfViewer 12.0.1 ends a
+  selection at any press outside it, and its style properties don't restyle a selection, though its docs say they do;
+  its right-click menu does (the toolbar spec's §10, probes 8 and 8b, which show whether a newer PdfViewer fixes them).
+  Both are worth reporting to Avalonia.
 
 - **Remove the temporary patch to Avalonia's macOS library** once an Avalonia release fixes
   [AvaloniaUI/Avalonia#22285](https://github.com/AvaloniaUI/Avalonia/issues/22285), which is the cause of

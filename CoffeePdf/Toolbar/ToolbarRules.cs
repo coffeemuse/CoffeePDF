@@ -54,20 +54,22 @@ internal static class ToolbarRules
         new("Orange", new(255, 149, 0, 255)), new("Black", new(0, 0, 0, 255)),
     ];
 
-    /// <summary>The format menus for <paramref name="tool"/>, armed, or for <paramref name="selection"/>, which wins.</summary>
-    public static FormatMenus For(PdfViewerTool tool, PageSelection selection) => selection switch
-    {
-        PageSelection.Shape => FormatMenus.Colour | FormatMenus.Line,
-        PageSelection.TextBox => FormatMenus.Colour | FormatMenus.Line | FormatMenus.Text,
-        _ => tool switch
+    /// <summary>
+    /// The format menus for <paramref name="tool"/>, armed, which style the markup it makes; none while anything is
+    /// <paramref name="selection"/>. The PdfViewer 12.0.1 ends a selection at any press outside it, so a format button's
+    /// press ended it, and setting its style properties doesn't restyle a selection anyway (the owner's check 6,
+    /// probes 8 and 8b). Its own right-click menu restyles a selection.
+    /// </summary>
+    public static FormatMenus For(PdfViewerTool tool, PageSelection selection) => selection != PageSelection.None
+        ? FormatMenus.None
+        : tool switch
         {
             PdfViewerTool.Highlight or PdfViewerTool.Underline or PdfViewerTool.Strikeout or PdfViewerTool.Squiggly
                 or PdfViewerTool.Note or PdfViewerTool.Stamp => FormatMenus.Colour,
             PdfViewerTool.Draw or PdfViewerTool.Shape => FormatMenus.Colour | FormatMenus.Line,
             PdfViewerTool.Text => FormatMenus.Colour | FormatMenus.Line | FormatMenus.Text,
             _ => FormatMenus.None,
-        },
-    };
+        };
 
     /// <summary>
     /// A typed zoom, "135%" or "135", as a zoom level (1 is 100%) clamped to [<paramref name="min"/>,

@@ -58,16 +58,18 @@ One row under the title bar, below the Healdan bar when that shows:
     Date. The button arms the last label chosen, and choosing a label arms it.
   - A second click on the armed tool disarms it (`ActiveTool = None`), so text selection comes back.
   - Redact stays hidden, as now: true redaction is v2's (v1 spec §2.2).
-- **The format menus** follow the tools while a tool is armed, or a shape or text box is selected. They never overflow.
+- **The format menus** follow the armed tool, and style the markup it makes. While a shape or text box is selected or
+  being edited they hide: the PdfViewer can't restyle a selection from them, and its own right-click menu does (owner,
+  2026-11-06; §10, the owner's check 6). They never overflow.
 
-  | Armed tool, or selected markup | Format menus | The viewer's properties they show and set |
+  | Armed tool | Format menus | The viewer's properties they show and set |
   |---|---|---|
   | Highlight, Underline, Strikethrough, Squiggly | Colour | `HighlightColor`, `UnderlineColor`, `StrikeoutColor`, `SquigglyColor` |
   | Note | Colour | `NoteColor` |
   | Stamp | Colour | `StampColor` |
   | Draw | Colour, Line | `DrawStrokeColor`, `DrawStrokeWidth` |
-  | Shapes, or a selected shape | Colour (fill and stroke), Line | `ShapeFillColor`, `ShapeStrokeColor`, `ShapeStrokeWidth` |
-  | Text, or a selected text box | Colour (fill, border and text), Line, Text | `TextAnnotationFillColor`, `TextAnnotationStrokeColor`, `TextAnnotationTextColor`, `TextAnnotationStrokeWidth`, `TextAnnotationFont`, `TextAnnotationFontSize`, `TextAnnotationFontAttributes`, `TextAnnotationTextAlign` |
+  | Shapes | Colour (fill and stroke), Line | `ShapeFillColor`, `ShapeStrokeColor`, `ShapeStrokeWidth` |
+  | Text | Colour (fill, border and text), Line, Text | `TextAnnotationFillColor`, `TextAnnotationStrokeColor`, `TextAnnotationTextColor`, `TextAnnotationStrokeWidth`, `TextAnnotationFont`, `TextAnnotationFontSize`, `TextAnnotationFontAttributes`, `TextAnnotationTextAlign` |
   | Link, or no tool | none | |
 
   - **Colour:** a row of swatches, No Colour (for a fill, a border or a stroke), and a typed hex colour. A stamp's none
@@ -75,8 +77,9 @@ One row under the title bar, below the Healdan bar when that shows:
     carry.
   - **Line:** the width, 0.5 to 20 points (the viewer's own range), with a preview.
   - **Text:** font, size, bold, italic, underline, and left, centre or right alignment.
-  - While a shape or text box is selected, the viewer shows and edits its style through those same properties, and puts
-    the defaults back when the selection ends (its docs on `ShapeStrokeWidth` and `TextAnnotationFont`).
+  - The viewer's docs say that while a shape or text box is selected, those same properties show and edit its style,
+    and the defaults come back when the selection ends (`ShapeStrokeWidth`, `TextAnnotationFont`). They do show a
+    selection's style, but setting them doesn't restyle it (§10, probe 8b).
 - **Right:** search, then Print.
   - Typing in the search box searches (`SearchQuery`). Return finds the next match and ⇧Return the previous one, and
     Escape clears the box. While there's a query, the box shows the count ("3 of 17") and previous and next buttons.
@@ -96,9 +99,9 @@ One row under the title bar, below the Healdan bar when that shows:
   window is built, and the toolbar touches the viewer only through public API.
   - **It reads** the viewer's properties as they change: `ActiveTool`, `SelectedShapeType`, `CurrentPage`,
     `PageCount`, `ZoomLevel`, `SearchResultCount`, `CurrentSearchResultIndex`, `SidebarMode`, `CanEditAnnotations` and
-    `HasDocument`, and the colours of §3's table, which the Colour button's swatch shows (the viewer loads a selection's
-    colours after its state shows). It reads the viewer's `:shape-selected` and `:editing-text` states, which the
-    viewer documents for host styles, as they come and go, to show the format menus for a selection. The rest of the
+    `HasDocument`, and the colours of §3's table, which the Colour button's swatch shows (they change as a selection
+    starts and ends). It reads the viewer's `:shape-selected` and `:editing-text` states, which the viewer documents
+    for host styles, as they come and go, to hide the format menus while there's a selection (§3). The rest of the
     format properties, `StampLabels`, `StampStyle`, `IncludeStampDate`, `SearchMatchCase` and `SearchMatchWholeWord` it
     reads as their menus open.
   - **It sets** `ActiveTool`, `SelectedShapeType`, the format properties, `StampLabels`, `StampStyle`,
@@ -181,7 +184,8 @@ pull request.
   `Category=PdfViewer`, against a real window and PDF:
   - the built-in toolbar is hidden;
   - each tool button arms its tool, a second click disarms it, and the toolbar follows the Tools menu arming one;
-  - the format menus show as §3's table says, for an armed tool, a selected shape and a text box being edited;
+  - the format menus show as §3's table says for an armed tool, and hide for a selected shape and a text box being
+    edited (changed 2026-11-06, the owner's check 6);
   - read-only hides the tools and disarms an armed one;
   - the page and zoom boxes move the viewer, and bad values are put back;
   - the search box searches and shows the count, and Edit › Find… puts the cursor in it;
@@ -191,7 +195,8 @@ pull request.
 - **The tests already there pass,** among them the menu tests that arm tools and the password prompt's.
 - **The owner's checks on the Mac,** listed in the pull request: the look in light and dark beside Preview's; the
   icons sharp on Retina; overflow while resizing; every tool marking up, with each saved markup showing the author in
-  Preview; the format menus restyling a selected shape and text box; stamps' labels, styles and date; search and ⌘F;
+  Preview; the format menus styling what each tool makes, and hiding while markup is selected (changed 2026-11-06);
+  stamps' labels, styles and date; search and ⌘F;
   a Healdan read-only copy showing no tools; and VoiceOver reading the buttons.
 
 ## 8. Docs and licence (call)
@@ -335,8 +340,8 @@ What this design rests on, and what the probes and the build find. The probes' a
   - The test helpers move the pointer before a click, flush input around typing, wait for a settled page, and re-drag
     when headless input drops a drag (probe 5).
   The limits: a highlight already on the page can't be recoloured from the toolbar (probe 2). A selected text box
-  that isn't being edited reads as a shape (probe 5), so it gets the shape's menus; whether they restyle it is for the
-  owner's check. Fluent's notice was added on 2026-11-06, once #16 had merged (§8).
+  that isn't being edited reads as a shape (probe 5), so it got the shape's menus, until the owner's check 6 hid the
+  menus for any selection (below). Fluent's notice was added on 2026-11-06, once #16 had merged (§8).
 - **The owner's checks (2026-11-06, on the test package 1.1.0-toolbar.3).** Checks 1 to 5 passed, with two findings:
   - **Check 1, fixed.** In dark mode, the Colour button's swatch looked darker and muddier than the highlight it
     applies. The swatch drew the highlight's half-opaque colour, so it blended with the dark toolbar, while the
@@ -347,3 +352,21 @@ What this design rests on, and what the probes and the build find. The probes' a
     (ISO 32000 §12.5.6.2), so it has no author, and `MarkupAuthor` writes one only on markup annotations
     (`AnnotationSubtype.IsMarkup`). The saved test file held the author on its highlight, underline, text box,
     rectangle, note, stamp and drawing, and none on its link.
+- **The owner's check 6 (2026-11-06, on 1.1.0-toolbar.4), and a change of design.** With a shape selected, a click on
+  a format button ended the selection and hid the menus, so they couldn't be opened. The headless tests had opened the
+  menus from code, never with a press. Probes 8 and 8b found two limits of the PdfViewer 12.0.1, from its public
+  behaviour only:
+  - **Probe 8: a press outside the viewer ends its selection.** A left or right press on a button outside it ends the
+    selection after the window's own handlers and before the press reaches the button, even when a handler has marked
+    the press handled already. Moving the focus to the button, or opening its menu from code, keeps the selection, and
+    so does a click inside a menu (a popup). The viewer's own toolbar sits inside it, and its menus are popups.
+  - **Probe 8b: its style properties don't restyle a selection.** With a square selected, setting `ShapeFillColor` and
+    `ShapeStrokeWidth` changes the properties, as new shapes' style, but not the square: its fill and border read back
+    unchanged from `GetAnnotationsAsync` for a second, and from a save once the selection ended, with the viewer's own
+    toolbar hidden or shown. That contradicts the viewer's docs on those properties (§3).
+  - **Its right-click menu restyles a selection** (the owner, on the Mac), so the viewer can do it, but not through
+    anything public.
+  - **The owner's decision:** the format menus follow only the armed tool, and hide while a shape or text box is
+    selected or being edited. Restyling a selection is the right-click menu's. Both limits are worth reporting to
+    Avalonia, and the toolbar can restyle a selection once a PdfViewer allows it (the roadmap's backlog). A shape just
+    drawn is selected, so its tool's menus hide until the selection ends.

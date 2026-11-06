@@ -1195,39 +1195,37 @@ public sealed class DocumentToolbarTests : IDisposable
     }
 
     [PdfViewerFact]
-    public async Task A_selected_shape_shows_its_format_menus_and_its_colour_until_the_selection_ends()
+    public async Task A_selected_shape_hides_the_format_menus_until_the_selection_ends()
     {
+        // The owner's check 6 (2026-11-06): a press on a format button ended the selection before the button saw it, and
+        // the viewer doesn't restyle a selection from its properties anyway (probes 8 and 8b), so a selection shows none.
         var path = Fixture();
-        var red = new PdfAnnotationColor(255, 0, 0, 255);
 
-        var (whileSelected, swatch, afterwards) = await Headless.RunAsync(async () =>
+        var (tool, whileSelected, afterwards) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
             var (v, t) = (window.Viewer, window.Toolbar);
             await TestWindows.WaitForAsync(() => HasPage(v));
             t.ChooseShape(ShapeType.Rectangle);
-            v.ShapeFillColor = red; // so the click can land on its centre, not its edge
+            v.ShapeFillColor = new PdfAnnotationColor(255, 0, 0, 255);
             await DragUntilAnnotatedAsync(window, v, OnPage(v, window, 200, 500), OnPage(v, window, 300, 420), PdfAnnotationType.Square);
-            v.ActiveTool = PdfViewerTool.None; // so what shows is the selection's, not the tool's
-            // A shape just drawn is selected already, so the click below would show nothing new: end that selection first
-            // (ruling 6 of the final review).
+            // A shape just drawn is selected, with its tool still armed (ruling 6 of the final review).
+            await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.Shape);
+            Dispatcher.UIThread.RunJobs();
+            var whileSelected = t.FormatGroup.IsVisible;
+            var tool = v.ActiveTool;
+            // With the tool armed a click elsewhere keeps the selection, so it's ended with none armed, then the tool armed again.
+            v.ActiveTool = PdfViewerTool.None;
             Click(window, OnPage(v, window, 450, 150));
             await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.None);
-            v.ShapeFillColor = new PdfAnnotationColor(0, 200, 0, 255); // new shapes' fill, which selecting this one replaces
-            Click(window, OnPage(v, window, 250, 460));
-            // The selection's state comes before the viewer loads the shape's style (ruling 2 of the final review).
-            await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.Shape && v.ShapeFillColor == red);
-            Dispatcher.UIThread.RunJobs();
-            var whileSelected = (t.ColourButton.IsVisible, t.LineButton.IsVisible, t.TextButton.IsVisible);
-            var swatch = (t.ColourSwatch.Fill as Avalonia.Media.ISolidColorBrush)?.Color;
-            Click(window, OnPage(v, window, 450, 150));
-            await TestWindows.WaitForAsync(() => !t.FormatGroup.IsVisible);
-            return (whileSelected, swatch, t.FormatGroup.IsVisible);
+            t.Arm(PdfViewerTool.Shape);
+            await TestWindows.WaitForAsync(() => t.FormatGroup.IsVisible);
+            return (tool, whileSelected, t.FormatGroup.IsVisible);
         });
 
-        Assert.Equal((true, true, false), whileSelected);
-        Assert.Equal(Avalonia.Media.Color.FromArgb(255, 255, 0, 0), swatch);
-        Assert.False(afterwards);
+        Assert.Equal(PdfViewerTool.Shape, tool);
+        Assert.False(whileSelected);
+        Assert.True(afterwards);
     }
 
     [PdfViewerFact]
@@ -1304,11 +1302,12 @@ public sealed class DocumentToolbarTests : IDisposable
     }
 
     [PdfViewerFact]
-    public async Task A_text_box_being_edited_shows_all_three_format_menus()
+    public async Task A_text_box_being_edited_hides_the_format_menus()
     {
+        // As a selected shape does (the owner's check 6): a press on a format button would end the editing.
         var path = Fixture();
 
-        var (shown, names) = await Headless.RunAsync(async () =>
+        var (tool, shown) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
             var (v, t) = (window.Viewer, window.Toolbar);
@@ -1318,33 +1317,11 @@ public sealed class DocumentToolbarTests : IDisposable
             window.KeyTextInput("abc");
             Dispatcher.UIThread.RunJobs();
             await TestWindows.WaitForAsync(() => t.Selection() == CoffeePdf.Toolbar.PageSelection.TextBox);
-            v.ActiveTool = PdfViewerTool.None; // so what shows is the selection's, not the tool's
-            return ((t.ColourButton.IsVisible, t.LineButton.IsVisible, t.TextButton.IsVisible), t.ColourSlots().Select(s => s.Name).ToList());
+            Dispatcher.UIThread.RunJobs();
+            return (v.ActiveTool, t.FormatGroup.IsVisible);
         });
 
-        Assert.Equal((true, true, true), shown);
-        Assert.Equal(new[] { "Fill", "Border", "Text" }, names);
-    }
-
-    /// <summary>
-    /// Drags with the armed tool until the viewer has the annotation it draws. Now and then (about one drag in six, in
-    /// the headless run) the viewer drops a drag, as probe 5 saw, and a test that waits for what the drag made would wait
-    /// for nothing; so a drag that made nothing is made again.
-    /// </summary>
-    private static async Task DragUntilAnnotatedAsync(Avalonia.Controls.Window window, PdfViewer viewer, Avalonia.Point from, Avalonia.Point to, PdfAnnotationType type)
-    {
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            Drag(window, from, to);
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
-            while (DateTime.UtcNow < deadline)
-            {
-                if ((await viewer.GetAnnotationsAsync(0, CancellationToken.None)).Any(a => a.Type == type))
-                    return;
-                await Task.Delay(1);
-                Dispatcher.UIThread.RunJobs();
-            }
-        }
-        throw new TimeoutException($"No {type} annotation came from five drags");
+        Assert.Equal(PdfViewerTool.Text, tool);
+        Assert.False(shown);
     }
 }

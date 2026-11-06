@@ -94,7 +94,7 @@ public partial class DocumentToolbar : UserControl
         else if (e.Property == PdfViewer.HasDocumentProperty || e.Property == PdfViewer.CanEditAnnotationsProperty)
             ShowAvailability();
         else if (ColourProperties.Contains(e.Property))
-            ShowColourSwatch(); // the viewer loads a selection's colours after its state shows (ruling 2 of the final review)
+            ShowColourSwatch(); // however they change, as when a selection's ending puts them back (ruling 2 of the final review)
     }
 
     /// <summary>The viewer's colours the Colour button may show (spec §3's table).</summary>
@@ -563,34 +563,34 @@ public partial class DocumentToolbar : UserControl
         ShowColourSwatch();
     }
 
-    /// <summary>The colours the Colour menu edits for the armed tool or the selection, which wins (spec §3's table).</summary>
+    /// <summary>The colours the Colour menu edits for the armed tool (spec §3's table; a selection shows no menus).</summary>
     internal IReadOnlyList<ColourSlot> ColourSlots()
     {
         var v = Viewer;
         static ColourSlot Solid(string name, Func<PdfAnnotationColor> get, Action<PdfAnnotationColor> set) =>
             new(name, null, () => get(), c => { if (c is { } colour) set(colour); });
         const string none = ColourSlot.NoColour;
-        return (Selection(), v.ActiveTool) switch
+        return v.ActiveTool switch
         {
-            (PageSelection.TextBox, _) or (PageSelection.None, PdfViewerTool.Text) =>
+            PdfViewerTool.Text =>
             [
                 new("Fill", none, () => v.TextAnnotationFillColor, c => v.TextAnnotationFillColor = c),
                 new("Border", none, () => v.TextAnnotationStrokeColor, c => v.TextAnnotationStrokeColor = c),
                 Solid("Text", () => v.TextAnnotationTextColor, c => v.TextAnnotationTextColor = c),
             ],
-            (PageSelection.Shape, _) or (PageSelection.None, PdfViewerTool.Shape) =>
+            PdfViewerTool.Shape =>
             [
                 new("Fill", none, () => v.ShapeFillColor, c => v.ShapeFillColor = c),
                 new("Stroke", none, () => v.ShapeStrokeColor, c => v.ShapeStrokeColor = c),
             ],
-            (_, PdfViewerTool.Highlight) => [Solid("Colour", () => v.HighlightColor, c => v.HighlightColor = c)],
-            (_, PdfViewerTool.Underline) => [Solid("Colour", () => v.UnderlineColor, c => v.UnderlineColor = c)],
-            (_, PdfViewerTool.Strikeout) => [Solid("Colour", () => v.StrikeoutColor, c => v.StrikeoutColor = c)],
-            (_, PdfViewerTool.Squiggly) => [Solid("Colour", () => v.SquigglyColor, c => v.SquigglyColor = c)],
-            (_, PdfViewerTool.Note) => [Solid("Colour", () => v.NoteColor, c => v.NoteColor = c)],
-            (_, PdfViewerTool.Draw) => [Solid("Colour", () => v.DrawStrokeColor, c => v.DrawStrokeColor = c)],
+            PdfViewerTool.Highlight => [Solid("Colour", () => v.HighlightColor, c => v.HighlightColor = c)],
+            PdfViewerTool.Underline => [Solid("Colour", () => v.UnderlineColor, c => v.UnderlineColor = c)],
+            PdfViewerTool.Strikeout => [Solid("Colour", () => v.StrikeoutColor, c => v.StrikeoutColor = c)],
+            PdfViewerTool.Squiggly => [Solid("Colour", () => v.SquigglyColor, c => v.SquigglyColor = c)],
+            PdfViewerTool.Note => [Solid("Colour", () => v.NoteColor, c => v.NoteColor = c)],
+            PdfViewerTool.Draw => [Solid("Colour", () => v.DrawStrokeColor, c => v.DrawStrokeColor = c)],
             // A stamp with no colour of its own takes its label's (PdfViewer.DefaultStampColorFor), so its none is that.
-            (_, PdfViewerTool.Stamp) => [new("Colour", "Label's Colour", () => v.StampColor, c => v.StampColor = c)],
+            PdfViewerTool.Stamp => [new("Colour", "Label's Colour", () => v.StampColor, c => v.StampColor = c)],
             _ => [],
         };
     }
@@ -607,16 +607,14 @@ public partial class DocumentToolbar : UserControl
         LineWidths.Show(get, set);
     }
 
-    /// <summary>The width the Line menu edits for the armed tool or the selection, which wins (spec §3's table).</summary>
+    /// <summary>The width the Line menu edits for the armed tool (spec §3's table; a selection shows no menus).</summary>
     private (Func<float> Get, Action<float> Set) LineWidth()
     {
         var v = Viewer;
-        return (Selection(), v.ActiveTool) switch
+        return v.ActiveTool switch
         {
-            (PageSelection.TextBox, _) or (PageSelection.None, PdfViewerTool.Text) =>
-                (() => v.TextAnnotationStrokeWidth, w => v.TextAnnotationStrokeWidth = w),
-            (PageSelection.Shape, _) or (PageSelection.None, PdfViewerTool.Shape) =>
-                (() => v.ShapeStrokeWidth, w => v.ShapeStrokeWidth = w),
+            PdfViewerTool.Text => (() => v.TextAnnotationStrokeWidth, w => v.TextAnnotationStrokeWidth = w),
+            PdfViewerTool.Shape => (() => v.ShapeStrokeWidth, w => v.ShapeStrokeWidth = w),
             _ => (() => v.DrawStrokeWidth, w => v.DrawStrokeWidth = w),
         };
     }

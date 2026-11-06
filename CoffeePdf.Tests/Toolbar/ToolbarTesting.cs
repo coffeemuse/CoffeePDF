@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Pdf.Core;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -125,6 +126,28 @@ internal static class ToolbarTesting
         if (enter)
             Press(window, Key.Enter);
         Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>
+    /// Drags with the armed tool until the viewer has the annotation it draws. Now and then (about one drag in six, in
+    /// the headless run) the viewer drops a drag, as probe 5 saw, and a test that waits for what the drag made would wait
+    /// for nothing; so a drag that made nothing is made again.
+    /// </summary>
+    public static async Task DragUntilAnnotatedAsync(Window window, PdfViewer viewer, Point from, Point to, PdfAnnotationType type)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            Drag(window, from, to);
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+            while (DateTime.UtcNow < deadline)
+            {
+                if ((await viewer.GetAnnotationsAsync(0, CancellationToken.None)).Any(a => a.Type == type))
+                    return;
+                await Task.Delay(1);
+                Dispatcher.UIThread.RunJobs();
+            }
+        }
+        throw new TimeoutException($"No {type} annotation came from five drags");
     }
 
     /// <summary>The viewer's states, such as <c>:shape-selected</c>, as they stand.</summary>

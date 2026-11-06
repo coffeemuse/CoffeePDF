@@ -382,4 +382,142 @@ public sealed class ToolbarProbes(ITestOutputHelper output) : IDisposable
 
         Print(lines);
     }
+
+    /// <summary>
+    /// Probe 8 (the owner's check 6, 2026-11-06): what a press outside the viewer does to a selected shape. With a shape
+    /// selected, a press on the toolbar's Colour button ended the selection before the button saw it, and the format
+    /// menus went with it. Here a plain button above the viewer stands in for the toolbar.
+    /// </summary>
+    [PdfViewerFact]
+    public async Task What_a_press_outside_the_viewer_does_to_a_selection()
+    {
+        var path = Fixture();
+
+        var lines = await Headless.RunAsync(async () =>
+        {
+            var inMenu = new Button { Content = "In the menu" };
+            var menu = new Flyout { Content = inMenu };
+            var outside = new Button { Content = "Outside", Flyout = menu };
+            var viewer = new PdfViewer { IsToolbarVisible = false, AllowAnnotationEditing = true, AutoSave = false, SidebarMode = SidebarMode.None };
+            DockPanel.SetDock(outside, Dock.Top);
+            var window = new Window { Content = new DockPanel { Children = { outside, viewer } }, Width = 1000, Height = 760 };
+            window.Show();
+            await Viewers.ShowAndLoadAsync(viewer, () => viewer.Source = path);
+            await TestWindows.WaitForAsync(() => HasPage(viewer));
+            viewer.SelectedShapeType = ShapeType.Rectangle;
+            viewer.ActiveTool = PdfViewerTool.Shape;
+            viewer.ShapeFillColor = new PdfAnnotationColor(255, 0, 0, 255); // so a click on its centre selects it
+            await DragUntilAnnotatedAsync(window, viewer, OnPage(viewer, window, 200, 500), OnPage(viewer, window, 300, 420), PdfAnnotationType.Square);
+            viewer.ActiveTool = PdfViewerTool.None;
+
+            var seen = new List<string>();
+            bool Selected() => viewer.Classes.Contains(":shape-selected");
+            // The selection as a press reaches the window, after the window's own handlers, and as it reaches the button.
+            window.AddHandler(InputElement.PointerPressedEvent, (_, e) => seen.Add($"  at the window: selected {Selected()}, handled {e.Handled}"),
+                Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+            outside.AddHandler(InputElement.PointerPressedEvent, (_, e) => seen.Add($"  at the button: selected {Selected()}, handled {e.Handled}"),
+                Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+            var handle = false;
+            window.AddHandler(InputElement.PointerPressedEvent, (_, e) => e.Handled |= handle, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+
+            var centre = outside.TranslatePoint(new Point(outside.Bounds.Width / 2, outside.Bounds.Height / 2), window)!.Value;
+            async Task Try(string what, Action act)
+            {
+                Click(window, OnPage(viewer, window, 450, 150));
+                await TestWindows.WaitForAsync(() => !Selected());
+                Click(window, OnPage(viewer, window, 250, 460));
+                await TestWindows.WaitForAsync(Selected);
+                seen.Add(what);
+                act();
+                Dispatcher.UIThread.RunJobs();
+                seen.Add($"  then: selected {Selected()}, focus on {Describe(window.FocusManager?.GetFocusedElement())}, menu open {menu.IsOpen}");
+                menu.Hide();
+                handle = false;
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            await Try("The focus moves to the button", () => outside.Focus());
+            await Try("Its menu opens from code", () => menu.ShowAt(outside));
+            await Try("A left click on the button", () => Click(window, outside));
+            await Try("A right press on the button", () =>
+            {
+                window.MouseMove(centre);
+                Dispatcher.UIThread.RunJobs();
+                window.MouseDown(centre, MouseButton.Right);
+                window.MouseUp(centre, MouseButton.Right);
+            });
+            await Try("A left click on the button, handled at the window first", () => { handle = true; Click(window, outside); });
+            await Try("A click inside its menu, opened from code", () =>
+            {
+                menu.ShowAt(outside);
+                Dispatcher.UIThread.RunJobs();
+                var top = TopLevel.GetTopLevel(inMenu)!;
+                var at = inMenu.TranslatePoint(new Point(inMenu.Bounds.Width / 2, inMenu.Bounds.Height / 2), top)!.Value;
+                seen.Add($"  the menu is in {Describe(top)}");
+                top.MouseMove(at);
+                Dispatcher.UIThread.RunJobs();
+                top.MouseDown(at, MouseButton.Left);
+                top.MouseUp(at, MouseButton.Left);
+            });
+            window.Close();
+            return seen;
+        });
+
+        Print(lines);
+    }
+
+    /// <summary>
+    /// Probe 8b (the owner's check 6, 2026-11-06): whether setting <c>ShapeFillColor</c> and <c>ShapeStrokeWidth</c>
+    /// while a shape is selected restyles it, as the viewer's docs say ("While a shape or text box is selected this shows
+    /// and edits its style"), with its own toolbar hidden and shown, read back from the viewer and from a save.
+    /// </summary>
+    [PdfViewerFact]
+    public async Task Whether_a_selected_shape_takes_a_style_set_from_code()
+    {
+        var path = Fixture();
+
+        var lines = await Headless.RunAsync(async () =>
+        {
+            var seen = new List<string>();
+            foreach (var toolbar in new[] { false, true })
+            {
+                var (window, viewer) = await OpenAsync(path, toolbar);
+                viewer.SelectedShapeType = ShapeType.Rectangle;
+                viewer.ActiveTool = PdfViewerTool.Shape;
+                viewer.ShapeFillColor = new PdfAnnotationColor(255, 0, 0, 255);
+                await DragUntilAnnotatedAsync(window, viewer, OnPage(viewer, window, 200, 500), OnPage(viewer, window, 300, 420), PdfAnnotationType.Square);
+                viewer.ActiveTool = PdfViewerTool.None;
+                Click(window, OnPage(viewer, window, 450, 150));
+                await TestWindows.WaitForAsync(() => !viewer.Classes.Contains(":shape-selected"));
+                Click(window, OnPage(viewer, window, 250, 460));
+                await TestWindows.WaitForAsync(() => viewer.Classes.Contains(":shape-selected"));
+                var width = viewer.ShapeStrokeWidth;
+                viewer.ShapeFillColor = new PdfAnnotationColor(0, 0, 255, 255);
+                viewer.ShapeStrokeWidth = width + 3;
+                // The viewer may restyle the selection later, so watch the square for up to a second.
+                var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+                PdfAnnotationInfo square;
+                do
+                {
+                    square = (await viewer.GetAnnotationsAsync(0, CancellationToken.None)).First(a => a.Type == PdfAnnotationType.Square);
+                    if (square.InteriorColor is { R: 0, B: 255 })
+                        break;
+                    await Task.Delay(10);
+                    Dispatcher.UIThread.RunJobs();
+                } while (DateTime.UtcNow < deadline);
+                seen.Add($"Its toolbar {(toolbar ? "shown" : "hidden")}, selected: the square's fill {Hex(square.InteriorColor)} and border {square.BorderWidth}, " +
+                         $"the properties {Hex(viewer.ShapeFillColor)} and {viewer.ShapeStrokeWidth}");
+                Click(window, OnPage(viewer, window, 450, 150));
+                await TestWindows.WaitForAsync(() => !viewer.Classes.Contains(":shape-selected"));
+                using var saved = new MemoryStream();
+                await viewer.SaveDocumentAsync(saved);
+                var fills = Regex.Matches(Encoding.Latin1.GetString(saved.ToArray()), @"/IC\s*\[[^\]]*\]").Select(m => m.Value);
+                seen.Add($"  once the selection ended, saved: the file's fills {string.Join(", ", fills)}");
+                window.Close();
+            }
+            return seen;
+        });
+
+        Print(lines);
+    }
 }

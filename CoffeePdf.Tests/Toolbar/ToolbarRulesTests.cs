@@ -19,10 +19,14 @@ public sealed class ToolbarRulesTests
     [InlineData(PdfViewerTool.Text, "None", "Colour, Line, Text")]
     [InlineData(PdfViewerTool.Link, "None", "None")]
     [InlineData(PdfViewerTool.None, "None", "None")]
-    [InlineData(PdfViewerTool.None, "Shape", "Colour, Line")]
-    [InlineData(PdfViewerTool.None, "TextBox", "Colour, Line, Text")]
-    [InlineData(PdfViewerTool.Highlight, "Shape", "Colour, Line")]
-    public void A_tool_or_selection_gets_the_specs_format_menus(PdfViewerTool tool, string selection, string menus) =>
+    // A selection gets none, whatever is armed: the PdfViewer ends it at a press outside it, and its style properties
+    // don't restyle it (the owner's check 6, probes 8 and 8b). Its own right-click menu does.
+    [InlineData(PdfViewerTool.None, "Shape", "None")]
+    [InlineData(PdfViewerTool.None, "TextBox", "None")]
+    [InlineData(PdfViewerTool.Shape, "Shape", "None")]
+    [InlineData(PdfViewerTool.Text, "TextBox", "None")]
+    [InlineData(PdfViewerTool.Highlight, "Shape", "None")]
+    public void An_armed_tool_gets_the_specs_format_menus_and_a_selection_none(PdfViewerTool tool, string selection, string menus) =>
         Assert.Equal(Enum.Parse<FormatMenus>(menus), ToolbarRules.For(tool, Enum.Parse<PageSelection>(selection)));
 
     [Theory]
