@@ -21,6 +21,8 @@ You need the .NET 10 SDK (`global.json` pins it). The PdfViewer needs the Avalon
 
 ```bash
 dotnet test CoffeePdf.sln                                    # everything; the PdfViewer's tests skip without the key
+python3 -I .githooks/test_check_personal_details.py          # the personal-details hook's tests, on made-up details
+python3 -I packaging/mac/test_check_notices.py               # the tests of package.sh's check of THIRD-PARTY-NOTICES.md
 COFFEEPDF_PROBES=1 dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find; the variable runs the heavy ones
 dotnet run --project CoffeePdf -- <file.pdf>                 # the app
 packaging/mac/package.sh 1.2.3                               # CoffeePDF.app and its .dmg, on a Mac
@@ -32,7 +34,10 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 - **The licence key** is never committed, logged or printed. `AvaloniaLicense.props` reads it from the environment.
 - **Personal details stay out of the repository**, including PDFs' markup authors, which default to the macOS full name.
   - Run `git config core.hooksPath .githooks` once per clone. The hook rejects any PDF, and any change that holds the
-    account's full name, account name or home folder.
+    account's full name, account name or home folder. Its one exception: inside `THIRD-PARTY-NOTICES.md`'s
+    ```` ```text ```` blocks, which hold other projects' notices word for word, the account name as a plain word is let
+    through. The exception names no one, so it says nothing about the account; keep it, and anything describing it,
+    that way. Its tests show it lets that through and nothing else.
   - Tests save with the made-up author `Test Reviewer`, and anything recording a name describes it instead of quoting it.
 - **Avalonia's macOS library is patched, TEMPORARILY** (AvaloniaUI/Avalonia#22285, CoffeePDF's issue #9). The app ships
   `packaging/avalonia-native/libAvaloniaNative.dylib` in place of the package's, and the build stops when Avalonia isn't
@@ -64,4 +69,9 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
   the run's own, and the flows' tests give each window a `FakeHelper`'s link.
 - **Nothing logs the channel's secret or a file's contents** (`CoffeeLog`). Log an exception by its type.
 - **Packaging:** only native code may sit in the bundle's `Contents/MacOS`, which `package.sh` checks.
+- **Third-party notices:** a change that adds a component to the app, or changes one's version, updates its section
+  in `THIRD-PARTY-NOTICES.md`, with the notice copied from the package or its upstream repository, never retyped.
+  `package.sh` puts the file in `Contents/Resources`. It stops without it, and `check-notices.py` stops it when the
+  publish carries a package, a version or a native library the file doesn't give. A newer SDK can bring a newer .NET
+  runtime with no change here, so that's the usual one.
 - **Pushes go through the owner.** Never push, tag or open a pull request without the owner's go-ahead.

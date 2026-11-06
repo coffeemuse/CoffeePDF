@@ -68,8 +68,10 @@ def forms(text):
     return found
 
 
-def details_in(data, details):
-    """Which details the bytes hold, as phrases such as "the full name"."""
+def details_in(data, details, words=None):
+    """Which details the bytes hold, as phrases such as "the full name". The account name's plain form is looked for in
+    `words`, which is the data itself unless the caller leaves part of it out; everything else is looked for in all of
+    the data."""
     full, account, home = details
     found = []
     for what, value in (("the full name", full), ("the home folder", home)):
@@ -80,9 +82,26 @@ def details_in(data, details):
         # other forms are plain substrings, but only from three characters, so a short name can't refuse everything.
         word = rb"(?i)(?<![A-Za-z0-9])" + re.escape(account.encode("utf-8")) + rb"(?![A-Za-z0-9])"
         plain = {variant.encode("utf-8") for variant in variants(account)}
-        if re.search(word, data) or (len(account) >= 3 and any(form in data for form in forms(account) - plain)):
+        if re.search(word, data if words is None else words) or (
+            len(account) >= 3 and any(form in data for form in forms(account) - plain)
+        ):
             found.append("the account name")
     return " and ".join(found)
+
+
+# The one exception (the owner allowed one for the notices on 2026-11-05; this is its form since the code review).
+# THIRD-PARTY-NOTICES.md copies other projects' notices word for word, each in a ```text block, and they name many
+# people, any of whom may share the account name. So inside those blocks only, the account name as a plain word doesn't
+# count. The exception names no one, so it says nothing about the account. The full name, the home folder and the
+# account name's other forms count inside the blocks too, and the plain account name counts in the rest of the file. A
+# block that isn't closed isn't one, so its text is checked as before.
+NOTICES = b"THIRD-PARTY-NOTICES.md"
+NOTICES_BLOCK = re.compile(rb"^```text\n.*?^```$", re.MULTILINE | re.DOTALL)
+
+
+def outside_notice_blocks(data):
+    """The notices file without its ```text blocks. A block takes whole lines, so the words either side stay apart."""
+    return NOTICES_BLOCK.sub(b"", data)
 
 
 def check_staged(details):
@@ -109,7 +128,7 @@ def check_staged(details):
         if blob.startswith(b"%PDF-"):
             problems.append("%s is a PDF, whatever its name. PDFs aren't committed to CoffeePDF, since a saved one carries its markup author." % name)
             continue
-        held = details_in(blob, details)
+        held = details_in(blob, details, outside_notice_blocks(blob) if path == NOTICES else None)
         if held:
             problems.append("%s contains %s (not shown). Take it out, and stage the file again." % (name, held))
     return problems

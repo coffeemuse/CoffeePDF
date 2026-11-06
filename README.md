@@ -28,4 +28,5 @@ Signed, notarised releases come from `v*` tags in CI. [Releasing](docs/RELEASING
 
 ## Licence
 
-Proprietary for now; see [LICENSE](LICENSE).
+Proprietary for now; see [LICENSE](LICENSE). The third-party components the app carries, and their notices, are in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
