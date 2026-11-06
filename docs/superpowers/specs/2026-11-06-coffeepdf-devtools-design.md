@@ -141,7 +141,7 @@ The app was built in Claude's scratchpad and kept out of the repository.
   - `THIRD-PARTY-NOTICES.md` doesn't change. A test build's `Contents/Resources` carries it, as a release's does.
 - **Exposure.** A build with the developer tools listens on its pipe from launch. Any process running as the owner can
   then read the app's tree and drive it, and the tree holds the open files' names in the titles, the forms' values and
-  any markup text being typed. That's acceptable for a test build on the owner's Mac, and it's why a release must never
+  any markup text being typed. avdt's `screenshot` also renders the PdfViewer node, which is the page itself. That's acceptable for a test build on the owner's Mac, and it's why a release must never
   carry them.
 - **The guards, together.** A release can't carry the developer tools for three independent reasons:
   - a signed build refuses them;
@@ -173,8 +173,9 @@ them (§5).
 1. **Build** the test package with `COFFEEPDF_DEVTOOLS=1` and the licence key, such as
    `COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh 1.1.0-toolbar.5`.
 2. **Launch it walled off,** as `Headless` walls off the tests:
-   - First, any other CoffeePDF is quit. The test build has the same bundle identifier, which computer use and the Dock
-     go by (found while planning).
+   - First, the owner quits any other CoffeePDF, which may hold unsaved markups. Claude never quits or kills a
+     CoffeePDF it didn't start. The test build has the same bundle identifier, which computer use and the Dock go by
+     (found while planning).
    - Claude starts the bundle's binary directly (`CoffeePDF.app/Contents/MacOS/CoffeePDF <file.pdf>`), not through
      `open`, which would let LaunchServices hand the file to a running CoffeePDF with the same bundle identifier.
    - `COFFEEPDF_SETTINGS_DIR`, `COFFEEPDF_LOG_DIR` and `HEALDAN_HELPER_DEV_ROOT` point at folders in Claude's

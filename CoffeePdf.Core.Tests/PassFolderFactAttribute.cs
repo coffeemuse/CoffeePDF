@@ -1,8 +1,8 @@
 namespace CoffeePdf.Core.Tests;
 
 /// <summary>
-/// A probe for Claude's pass on a test build (docs/DEVTOOLS.md). It runs only with <see cref="Variable"/> naming a folder
-/// outside the repository, where the pass's PDFs go, and is skipped otherwise.
+/// A probe for Claude's pass on a test build (docs/DEVTOOLS.md). It runs only with <see cref="Variable"/> set, and is
+/// skipped otherwise. The variable should name a folder outside the repository, where the pass's PDFs go.
 /// </summary>
 public sealed class PassFolderFactAttribute : FactAttribute
 {

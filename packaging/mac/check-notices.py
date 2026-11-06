@@ -92,6 +92,8 @@ def devtools_only(deps):
         return seen
 
     projects = [key for key, library in deps["libraries"].items() if library["type"] == "project" and key in target]
+    if not projects:
+        raise KeyError("deps.json lists no project")  # nothing to tell the tools' packages from the app's own
     kept = reached(projects, avoid=keys[DEVTOOLS])
     return {key.rsplit("/", 1)[0] for key in reached([keys[DEVTOOLS]]) - kept}
 

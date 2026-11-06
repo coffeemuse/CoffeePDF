@@ -820,7 +820,7 @@ it.
 
 ```python
 # $SCRATCH/avdt_call.py: python3 -I avdt_call.py '[["attach-to-app", {}], ["search", {"query": "Window"}]]'
-import base64, json, select, subprocess, sys, time
+import base64, json, os, select, subprocess, sys, time
 calls = json.loads(sys.argv[1])
 server = subprocess.Popen(["avdt", "mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 def send(message):
@@ -846,7 +846,8 @@ for number, (name, arguments) in enumerate(calls, start=10):
         if content.get("type") == "text":
             print(content["text"][:4000])
         else:
-            open("shot.png", "wb").write(base64.b64decode(content["data"])); print("[saved shot.png]")
+            shot = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shot.png")
+            open(shot, "wb").write(base64.b64decode(content["data"])); print("[saved %s, next to this script]" % shot)
 server.terminate()
 ```
 
@@ -854,7 +855,8 @@ A new attach makes node ids stale, so each run of the client attaches and then s
 
 - [ ] **Step 7: Run the pass's first steps on Task 3's build**
 
-First quit any other CoffeePDF, since the test build shares its bundle identifier. Then start this, in the background:
+If another CoffeePDF is running, leave it: never quit or kill one Claude didn't start. Attach by the pid the launch writes.
+Start this, in the background:
 
 ```bash
 SCRATCH=…; APP="$SCRATCH/out-devtools/CoffeePDF.app" packaging/mac/launch-test-build.sh "$SCRATCH" "$SCRATCH/pdfs/plain.pdf"

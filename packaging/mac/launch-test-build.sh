@@ -21,17 +21,24 @@ set -euo pipefail
 die() { printf 'launch-test-build.sh: %s\n' "$*" >&2; exit 1; }
 
 [ "$#" -ge 1 ] || die "usage: launch-test-build.sh <folder> [<file.pdf> ...]"
-here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+here=$(cd "$(dirname "$0")" && pwd -P)
+repo=$(cd "$here/../.." && pwd -P)
 [ -d "$1" ] || die "$1 isn't a folder: give one that exists, outside the repository"
-folder=$(cd "$1" && pwd)
+folder=$(cd "$1" && pwd -P)
 case "$folder/" in
   "$repo"/*) die "the folder must be outside the repository, so no PDF or setting lands in it" ;;
 esac
+if git -C "$folder" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  die "the folder must be outside any git work tree, so no PDF or setting lands in one"
+fi
 shift
 app=${APP:-"$here/out/CoffeePDF.app"}
 binary="$app/Contents/MacOS/CoffeePDF"
 [ -x "$binary" ] || die "$binary isn't there: build it with COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh <version>"
+if ! grep -a -q -F 'AvaloniaUI.DiagnosticsSupport.Avalonia.dll' "$binary"; then
+  printf "warning: %s doesn't carry the developer tools, so avdt can't reach it (build it with COFFEEPDF_DEVTOOLS=1)\n" \
+    "$app" >&2
+fi
 
 mkdir -p "$folder/settings" "$folder/log" "$folder/helper"
 # The shape SettingsStore reads (spec §5): no Healdan support, the question asked, and the tests' made-up author.

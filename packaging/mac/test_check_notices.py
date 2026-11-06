@@ -197,6 +197,11 @@ class TheDeveloperTools(unittest.TestCase):
         self.assertSays(check.problems(document, NOTICES, LIBRARIES, devtools=True),
                         "New.Managed 1.0.0, which no section names")
 
+    def test_they_without_a_project_cannot_be_told_apart(self):
+        document = with_devtools()
+        document["libraries"]["CoffeePDF/1.0.0"]["type"] = "package"
+        self.assertRaises(KeyError, check.devtools_only, document)
+
     def test_main_takes_the_flag(self):
         with tempfile.TemporaryDirectory() as folder, contextlib.redirect_stderr(io.StringIO()):
             published, notices = os.path.join(folder, "CoffeePDF.deps.json"), os.path.join(folder, "notices.md")
