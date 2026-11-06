@@ -250,7 +250,7 @@ What this design rests on, and what the probes and the build find. The probes' a
   viewer's template, as the plan expects.
 - **Probe 5 (observed 2026-11-05, keyed run; probes 5 and 5b, eight runs each, identical but for timings).** Input
   needs a pointer move to the spot before the press: without it, headless clicks and drags were lost intermittently
-  (probe 3's stamp failed to place in one of eight early runs, and a Text-tool drag made a box in two of six). The probes'
+  (probe 3's stamp failed to place in one of six early runs, and a Text-tool drag made a box in two of six). The probes'
   `Click` and `Drag` now move first, and every later run agreed. The page is also laid out twice (at its own size, then
   fitted to the window), so a click lands only once its bounds stop changing.
   *Shapes.* At the start the states are focus and `:has-document`. Drawing with the Shape tool left `SelectedShapeType`
