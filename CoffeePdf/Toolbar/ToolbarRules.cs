@@ -109,4 +109,15 @@ internal static class ToolbarRules
 
     /// <summary>A colour as the Colour menu's box shows it: "#RRGGBB".</summary>
     public static string Hex(PdfAnnotationColor colour) => $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}";
+
+    /// <summary>
+    /// How <paramref name="colour"/> looks on a white page: its opacity blended over white, and opaque. The toolbar
+    /// draws its colours so, since one drawn with its opacity blends with the toolbar instead, and a half-opaque
+    /// highlight's looked darker in dark mode than the highlight on the page (the owner's check 1, 2026-11-06).
+    /// </summary>
+    public static PdfAnnotationColor OnPaper(PdfAnnotationColor colour)
+    {
+        byte Over(byte channel) => (byte)Math.Round(255 - (255 - channel) * colour.A / 255.0);
+        return new PdfAnnotationColor(Over(colour.R), Over(colour.G), Over(colour.B), 255);
+    }
 }

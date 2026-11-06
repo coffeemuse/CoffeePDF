@@ -337,3 +337,13 @@ What this design rests on, and what the probes and the build find. The probes' a
   The limits: a highlight already on the page can't be recoloured from the toolbar (probe 2). A selected text box
   that isn't being edited reads as a shape (probe 5), so it gets the shape's menus; whether they restyle it is for the
   owner's check. Fluent's notice was added on 2026-11-06, once #16 had merged (§8).
+- **The owner's checks (2026-11-06, on the test package 1.1.0-toolbar.3).** Checks 1 to 5 passed, with two findings:
+  - **Check 1, fixed.** In dark mode, the Colour button's swatch looked darker and muddier than the highlight it
+    applies. The swatch drew the highlight's half-opaque colour, so it blended with the dark toolbar, while the
+    highlight blends with the white page. Every colour sample now shows the colour as it looks on a white page
+    (`ToolbarRules.OnPaper`). That covers the Colour button's swatch, and the Colour menu's swatches at the opacity
+    choosing them gives. To check again on 1.1.0-toolbar.4.
+  - **Check 5, by design.** Every markup showed its author in Preview but the link. A link isn't a markup annotation
+    (ISO 32000 §12.5.6.2), so it has no author, and `MarkupAuthor` writes one only on markup annotations
+    (`AnnotationSubtype.IsMarkup`). The saved test file held the author on its highlight, underline, text box,
+    rectangle, note, stamp and drawing, and none on its link.

@@ -971,11 +971,47 @@ public sealed class DocumentToolbarTests : IDisposable
             return (fromSwatch, window.Viewer.HighlightColor, shown);
         });
 
-        // The highlight's colour is half opaque by default, and a new colour keeps that.
+        // The highlight's colour is half opaque by default, and a new colour keeps that. The button shows it as it looks
+        // on the page, opaque, so it doesn't blend with the toolbar (the owner's check 1, 2026-11-06).
         Assert.NotEqual(255, before.A);
         Assert.Equal(new PdfAnnotationColor(0, 122, 255, before.A), fromSwatch);
         Assert.Equal(new PdfAnnotationColor(0x11, 0x22, 0x33, before.A), typed);
-        Assert.Equal(Avalonia.Media.Color.FromArgb(before.A, 0x11, 0x22, 0x33), swatchShown);
+        var onPaper = ToolbarRules.OnPaper(typed);
+        Assert.Equal(Avalonia.Media.Color.FromRgb(onPaper.R, onPaper.G, onPaper.B), swatchShown);
+    }
+
+    [PdfViewerFact]
+    public async Task The_Colour_menus_swatches_show_each_colour_as_choosing_it_puts_it_on_the_page()
+    {
+        // The owner's check 1 (2026-11-06): a colour drawn with its opacity blends with the toolbar, not the page. A
+        // swatch's colour keeps the slot's opacity when chosen, so the swatch shows it at that opacity, on paper.
+        var path = Fixture();
+
+        var (alpha, highlight, fill) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            List<Avalonia.Media.Color?> Shown() => t.Colours.SwatchButtons
+                .Select(b => ((b.Content as Avalonia.Controls.Shapes.Shape)?.Fill as Avalonia.Media.ISolidColorBrush)?.Color)
+                .ToList();
+            t.Arm(PdfViewerTool.Highlight);
+            t.ShowColourMenu();
+            var highlight = Shown();
+            var alpha = window.Viewer.HighlightColor.A;
+            t.Arm(PdfViewerTool.Shape);
+            window.Viewer.ShapeFillColor = new PdfAnnotationColor(255, 0, 0, 255);
+            t.ShowColourMenu();
+            return (alpha, highlight, Shown());
+        });
+
+        static Avalonia.Media.Color? OnPaper(PdfAnnotationColor colour, byte alpha)
+        {
+            var paper = ToolbarRules.OnPaper(new PdfAnnotationColor(colour.R, colour.G, colour.B, alpha));
+            return Avalonia.Media.Color.FromRgb(paper.R, paper.G, paper.B);
+        }
+        Assert.NotEqual(255, alpha);
+        Assert.Equal(ToolbarRules.Swatches.Select(s => OnPaper(s.Colour, alpha)), highlight);
+        Assert.Equal(ToolbarRules.Swatches.Select(s => OnPaper(s.Colour, 255)), fill);
     }
 
     [PdfViewerFact]

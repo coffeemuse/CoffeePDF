@@ -77,6 +77,16 @@ public sealed class ToolbarRulesTests
     }
 
     [Fact]
+    public void A_colour_is_shown_as_it_looks_on_a_white_page()
+    {
+        // The owner's check 1 (2026-11-06): the half-opaque highlight's sample, drawn with its opacity, blended with the
+        // dark toolbar and looked darker than the highlight on the page.
+        Assert.Equal(new PdfAnnotationColor(0, 122, 255, 255), ToolbarRules.OnPaper(new PdfAnnotationColor(0, 122, 255, 255)));
+        Assert.Equal(new PdfAnnotationColor(252, 230, 172, 255), ToolbarRules.OnPaper(new PdfAnnotationColor(0xFA, 0xCD, 0x5A, 0x80)));
+        Assert.Equal(new PdfAnnotationColor(255, 255, 255, 255), ToolbarRules.OnPaper(new PdfAnnotationColor(0, 0, 0, 0)));
+    }
+
+    [Fact]
     public void The_lists_are_the_specs()
     {
         Assert.Equal(new[] { 0.5, 0.75, 1, 1.25, 1.5, 2, 4 }, ToolbarRules.ZoomPresets);

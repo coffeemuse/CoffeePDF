@@ -19,6 +19,7 @@ public sealed class ColourPicker : UserControl
     private readonly WrapPanel _swatches = new() { Width = 8 * 28 };
     private readonly Button _none = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBox _hex = new() { PlaceholderText = "#RRGGBB", Width = 110 };
+    private readonly List<(Ellipse Dot, PdfAnnotationColor Colour)> _dots = [];
     private IReadOnlyList<ColourSlot> _slots = [];
     private int _slot;
 
@@ -39,6 +40,7 @@ public sealed class ColourPicker : UserControl
             ToolTip.SetTip(swatch, $"{name} ({ToolbarRules.Hex(colour)})");
             swatch.Click += (_, _) => Choose(colour);
             _swatches.Children.Add(swatch);
+            _dots.Add((dot, colour));
         }
         _none.Click += (_, _) => Choose(null);
         AutomationProperties.SetName(_hex, "Hex Colour");
@@ -93,7 +95,14 @@ public sealed class ColourPicker : UserControl
         AutomationProperties.SetName(_none, slot?.None);
         ToolTip.SetTip(_none, slot?.None);
         _hex.Text = slot?.Get() is { } colour ? ToolbarRules.Hex(colour) : "";
+        // Each swatch shows its colour as choosing it puts it on the page: at the slot's opacity (Choose), on paper.
+        var opacity = ChosenOpacity(slot);
+        foreach (var (dot, swatch) in _dots)
+            dot.Fill = Brush(new PdfAnnotationColor(swatch.R, swatch.G, swatch.B, opacity));
     }
+
+    /// <summary>The opacity a colour chosen for <paramref name="slot"/> takes: its colour's, or opaque when it has none.</summary>
+    private static byte ChosenOpacity(ColourSlot? slot) => slot?.Get()?.A ?? 255;
 
     /// <summary>
     /// Sets the chosen tab's colour; null is none, where the slot offers it. A colour keeps the opacity of the one it
@@ -105,7 +114,7 @@ public sealed class ColourPicker : UserControl
         if (_slots.ElementAtOrDefault(_slot) is not { } slot || (colour is null && slot.None is null))
             return;
         if (colour is { } chosen)
-            colour = new PdfAnnotationColor(chosen.R, chosen.G, chosen.B, slot.Get()?.A ?? 255);
+            colour = new PdfAnnotationColor(chosen.R, chosen.G, chosen.B, ChosenOpacity(slot));
         slot.Set(colour);
         ShowSlot(_slot);
         Chosen?.Invoke(this, EventArgs.Empty);
@@ -120,5 +129,10 @@ public sealed class ColourPicker : UserControl
             ShowSlot(_slot);
     }
 
-    internal static IBrush Brush(PdfAnnotationColor colour) => new SolidColorBrush(Color.FromArgb(colour.A, colour.R, colour.G, colour.B));
+    /// <summary><paramref name="colour"/> as it looks on a white page (<see cref="ToolbarRules.OnPaper"/>).</summary>
+    internal static IBrush Brush(PdfAnnotationColor colour)
+    {
+        var paper = ToolbarRules.OnPaper(colour);
+        return new SolidColorBrush(Color.FromRgb(paper.R, paper.G, paper.B));
+    }
 }
