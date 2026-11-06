@@ -32,7 +32,8 @@ public partial class DocumentToolbar : UserControl
         FillZoomMenu();
         foreach (var shape in ToolbarRules.Shapes)
             ShapesMenu.Items.Add(Item(shape.ToString(), () => ChooseShape(shape)));
-        Tools.OverflowChanged += (_, _) => FillMoreMenu();
+        Tools.OverflowChanged += (_, _) => ShowOverflow();
+        ShowOverflow(); // nothing has overflowed yet, so More starts hidden; the panel only says when that changes
         Colours.Chosen += (_, _) => ShowColourSwatch();
     }
 
@@ -387,8 +388,43 @@ public partial class DocumentToolbar : UserControl
     }
 
     /// <summary>
-    /// Lists the tools that don't fit in the More menu, rebuilt each time the panel says which (spec §4). Shapes and Stamp
-    /// bring their own menus as submenus.
+    /// Takes what the panel has moved off the row out of sight, and puts the rest back, each time the panel says which
+    /// (spec §4). The panel arranges an overflowed child in an empty rect but leaves it drawn, taking clicks and the
+    /// focus, and a split button keeps its minimum height there, over the first tool (the final review's C1). The More
+    /// button is the panel's too, arranged the same way while nothing has overflowed, so it shows only while something has.
+    /// </summary>
+    private void ShowOverflow()
+    {
+        var overflowed = Tools.OverflowedChildren;
+        foreach (var child in Tools.Children)
+            SetShown(child, child == MoreButton ? overflowed.Count > 0 : !overflowed.Contains(child));
+        FillMoreMenu();
+    }
+
+    /// <summary>
+    /// Shows <paramref name="control"/>, as its styles have it, or hides it while it stays in the panel: the panel would
+    /// stop counting a child that isn't visible, and never bring it back.
+    /// </summary>
+    private static void SetShown(Control control, bool shown)
+    {
+        if (shown)
+        {
+            control.ClearValue(OpacityProperty);
+            control.ClearValue(IsHitTestVisibleProperty);
+            control.ClearValue(FocusableProperty);
+            control.ClearValue(AutomationProperties.AccessibilityViewProperty);
+        }
+        else
+        {
+            control.Opacity = 0;
+            control.IsHitTestVisible = false;
+            control.Focusable = false;
+            AutomationProperties.SetAccessibilityView(control, AccessibilityView.Raw); // so VoiceOver passes over it
+        }
+    }
+
+    /// <summary>
+    /// Lists the tools that don't fit in the More menu (spec §4). Shapes and Stamp bring their own menus as submenus.
     /// </summary>
     private void FillMoreMenu()
     {

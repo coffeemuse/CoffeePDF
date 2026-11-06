@@ -35,7 +35,9 @@
           </DropDownButton.Flyout>
         </DropDownButton>
       </StackPanel>
-      <pdfc:OverflowToolbarPanel x:Name="Tools" Grid.Column="1" Spacing="2" Margin="12,0" HorizontalAlignment="Center">
+      <!-- The panel takes its whole column and centres the tools in it itself. Given only its desired width, as a centred
+           panel is, it never has room to bring a tool back once its More button has shown (the final review's C2). -->
+      <pdfc:OverflowToolbarPanel x:Name="Tools" Grid.Column="1" Spacing="2" Margin="12,0">
         <!-- The tools, in the Tools menu's order (spec §3). Each Tag is a PdfViewerTool's name. -->
         <ToggleButton Classes="bar tool" Tag="Highlight" ToolTip.Tip="Highlight (⌃⌘H)" AutomationProperties.Name="Highlight" Click="OnTool">
           <PathIcon Data="{StaticResource Icon.Highlight}" />

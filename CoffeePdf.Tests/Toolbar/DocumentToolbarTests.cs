@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Pdf.Core;
 using Avalonia.Controls.Primitives;
@@ -471,6 +472,153 @@ public sealed class DocumentToolbarTests : IDisposable
 
         Assert.Equal(overflowed, items);
         Assert.Equal(expected, armed);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="control"/> shows in the row: drawn, taking clicks, with it or one of its parts taking the
+    /// keyboard focus, and read by VoiceOver.
+    /// </summary>
+    private static bool Shown(Control control) =>
+        control.Opacity > 0 && control.IsHitTestVisible && control.Bounds is { Width: > 0, Height: > 0 } && CanFocus(control) && Read(control);
+
+    /// <summary>Whether a screen reader reads <paramref name="control"/>: it's a control element of the accessibility tree.</summary>
+    private static bool Read(Control control) => ControlAutomationPeer.CreatePeerForElement(control).IsControlElement();
+
+    /// <summary>Whether <paramref name="control"/>, or a part of its template, can take the keyboard focus.</summary>
+    private static bool CanFocus(Control control) =>
+        control.GetVisualDescendants().Prepend(control).OfType<InputElement>().Any(e => e.Focusable && e.IsEffectivelyEnabled);
+
+    /// <summary>Whether <paramref name="control"/> is out of the row: not drawn, taking no clicks or focus, and not read.</summary>
+    private static bool Hidden(Control control) => control.Opacity == 0 && !control.IsHitTestVisible && !CanFocus(control) && !Read(control);
+
+    /// <summary>
+    /// Waits until the window's last drawn frame has <paramref name="control"/> where its layout puts it. A hit test asks
+    /// the frame, which a resize leaves behind the layout until the next one is drawn; the right group moves with the
+    /// window's width, so a click on its Print button landing there says the frame has caught up.
+    /// </summary>
+    private static Task DrawnAsync(Window window, Control control) =>
+        TestWindows.WaitForAsync(() => control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window) is { } at
+            && window.InputHitTest(at) is Visual hit && (hit == control || control.IsVisualAncestorOf(hit)));
+
+    /// <summary>The tool, or the named control of the toolbar's own, that <paramref name="hit"/> is part of.</summary>
+    private static string Describe(Visual? hit) =>
+        hit?.GetVisualAncestors().Prepend(hit).OfType<Control>()
+            .FirstOrDefault(c => c.Classes.Contains("tool") || c.Name is { } name && !name.StartsWith("PART_")) is { } c
+            ? (string?)c.Tag ?? c.Name!
+            : hit?.GetType().Name ?? "nothing";
+
+    [PdfViewerFact]
+    public async Task At_its_minimum_width_each_tool_shown_takes_its_own_clicks_and_the_overflowed_ones_are_hidden()
+    {
+        // The final review's C1: an overflowed child is arranged in an empty rect, and a split button keeps its minimum
+        // height there, so overflowed Shapes and Stamp sat over Highlight's top half and took its clicks.
+        var path = Fixture();
+
+        var (wrong, armed) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            window.Width = window.MinWidth;
+            await TestWindows.WaitForAsync(() => t.Tools.OverflowedChildren.Count(c => c.Classes.Contains("tool")) >= 2
+                && t.MoreMenu.Items.Count > 0 && t.MoreButton.Bounds.Width > 0);
+            await DrawnAsync(window, t.PrintButton);
+            var overflowed = t.Tools.OverflowedChildren.ToHashSet();
+            var wrong = new List<string>();
+            foreach (var tool in ToolsInOrder)
+            {
+                var button = t.ButtonFor(tool);
+                if (overflowed.Contains(button))
+                {
+                    if (!Hidden(button))
+                        wrong.Add($"{tool} overflowed but not hidden: opacity {button.Opacity}, hit-testable {button.IsHitTestVisible}, focusable {CanFocus(button)}, read {Read(button)}");
+                    continue;
+                }
+                if (!Shown(button))
+                    wrong.Add($"{tool} on the row but not shown");
+                foreach (var down in new[] { 0.1, 0.5 })
+                {
+                    var at = button.TranslatePoint(new Point(button.Bounds.Width * 0.3, button.Bounds.Height * down), window)!.Value;
+                    if (window.InputHitTest(at) is not Visual hit || (hit != button && !button.IsVisualAncestorOf(hit)))
+                        wrong.Add($"{tool} at {down} of its height hits {Describe(window.InputHitTest(at) as Visual)}");
+                }
+            }
+            if (!Shown(t.MoreButton))
+                wrong.Add("More isn't shown while tools overflow");
+            var highlight = t.ButtonFor(PdfViewerTool.Highlight);
+            Click(window, highlight.TranslatePoint(new Point(highlight.Bounds.Width / 2, highlight.Bounds.Height * 0.2), window)!.Value);
+            return (wrong, window.Viewer.ActiveTool);
+        });
+
+        Assert.Empty(wrong);
+        Assert.Equal(PdfViewerTool.Highlight, armed); // a click on Highlight's top arms Highlight, not an overflowed tool
+    }
+
+    [PdfViewerFact]
+    public async Task Tools_that_overflowed_come_back_when_the_window_widens()
+    {
+        // The final review's C2: a panel centred in its column is only ever given its desired width, and once its More
+        // button has shown it reserves room for it there, so Stamp never came back.
+        var path = Fixture();
+
+        var (overflowed, moreHidden, stampShown) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            window.Width = window.MinWidth;
+            await TestWindows.WaitForAsync(() => t.Tools.OverflowedChildren.Count > 0 && t.MoreMenu.Items.Count > 0);
+            window.Width = 1400;
+            await TestWindows.WaitForAsync(() => t.Bounds.Width >= 1400);
+            // The panel tells which children overflowed after its arrange, in a job of its own, so a test that waited for
+            // none would wait ten seconds before failing; let that job run instead, then look.
+            Dispatcher.UIThread.RunJobs();
+            await TestWindows.WaitForAsync(() => t.Tools.Bounds.Width > 0);
+            Dispatcher.UIThread.RunJobs();
+            return (t.Tools.OverflowedChildren.Select(c => (string?)c.Tag ?? c.Name).ToList(), Hidden(t.MoreButton),
+                Shown(t.ButtonFor(PdfViewerTool.Stamp)));
+        });
+
+        Assert.Empty(overflowed);
+        Assert.True(moreHidden, "More still shows with nothing overflowed");
+        Assert.True(stampShown, "Stamp isn't back on the row");
+    }
+
+    [PdfViewerFact]
+    public async Task The_tools_sit_in_the_middle_of_their_column()
+    {
+        // The panel takes its whole column (C2's fix), and centres the tools in it itself.
+        var path = Fixture();
+
+        var (before, after) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            var t = window.Toolbar;
+            window.Width = 1400;
+            await TestWindows.WaitForAsync(() => t.Bounds.Width >= 1400 && t.Tools.OverflowedChildren.Count == 0);
+            var (first, last) = (t.ButtonFor(PdfViewerTool.Highlight), t.ButtonFor(PdfViewerTool.Stamp));
+            var start = first.TranslatePoint(default, t.Tools)!.Value.X;
+            var end = last.TranslatePoint(new Point(last.Bounds.Width, 0), t.Tools)!.Value.X;
+            return (start, t.Tools.Bounds.Width - end);
+        });
+
+        Assert.True(Math.Abs(before - after) <= 1, $"The tools start {before} in and end {after} short of their column's end");
+    }
+
+    [PdfViewerFact]
+    public async Task With_nothing_overflowed_the_More_button_is_hidden()
+    {
+        var path = Fixture();
+
+        var (overflowed, moreHidden) = await Headless.RunAsync(async () =>
+        {
+            var (window, _) = await TestWindows.OpenAsync(path);
+            window.Width = 1400;
+            await TestWindows.WaitForAsync(() => window.Toolbar.Bounds.Width >= 1400);
+            Dispatcher.UIThread.RunJobs();
+            return (window.Toolbar.Tools.OverflowedChildren.Count, Hidden(window.Toolbar.MoreButton));
+        });
+
+        Assert.Equal(0, overflowed);
+        Assert.True(moreHidden, "More shows, or takes the focus, with nothing overflowed");
     }
 
     [PdfViewerFact]
