@@ -230,3 +230,49 @@ What this design rests on, and what the probes and the build find. The probes' a
   `StampColor` and `IncludeStampDate`, but nothing that sets the label the Stamp tool places (§6, probe 3).
 - **Fluent's gaps (checked 2026-11-05).** The Fluent set has no stamp (`stamp_20_regular`) and no wavy underline
   (`text_underline_wavy_20_regular`).
+- **Probe 1 (observed 2026-11-05, keyed run).** With the toolbar hidden, the viewer has no key bindings of its own.
+  ⌘F moved nothing: focus stayed on the viewer, and zoom and tool were unchanged. ⌘+ zoomed in (0.909 to 1), so the
+  viewer keeps its zoom key. ⌘0, H, N and Escape did nothing visible (zoom 1, tool None). So Edit › Find… (Task 4) has
+  the key to itself, and no hidden search box takes the focus.
+- **Probe 2 (observed 2026-11-05, keyed run).** A highlight already on the page does not show as selected. Clicking it
+  left the viewer's states at focus, `:has-document` and pointer-over, with no selection state. The highlight's `Color`
+  read back as none both before and after `HighlightColor` was set to blue, so the new colour did not reach it. The
+  limit stands: CoffeePDF can't recolour a highlight on the page, and `Selection()` in Task 6 gets no state for it.
+- **Probe 3 (observed 2026-11-05, keyed run).** `StampLabels` has twenty labels, from Approved to Copy. Putting Final
+  (the fourth) first and clicking with the Stamp tool placed one stamp whose saved `/Name` is `Final`, which is
+  `StampNameForLabel("Final")`. So the first label in `StampLabels` is the one the Stamp tool places, and no stop
+  condition fired.
+- **Probe 4 (observed 2026-11-05, keyed run).** With ten 30-wide buttons, an indicator and a pinned 60-wide button in an
+  `OverflowToolbarPanel`: at 600 wide nothing overflowed, ten were visible, the indicator sat off the row (at 0,-15) and
+  the pinned button was at x 430. At 200 wide, seven buttons (3 to 9) overflowed, three were visible, the indicator
+  showed at x 102 and the pinned button at x 134, right after it. Back at 600 it returned to the first state.
+  `OverflowChanged` fired once for each change (1 at 200, 2 on return). The panel collapses on its own, outside the
+  viewer's template, as the plan expects.
+- **Probe 5 (observed 2026-11-05, keyed run, extended after review).** The page is drawn by a `Grid` in the page host,
+  and a click lands on it only once layout has settled (the page is first laid out at 612 wide, then fits the window), so
+  the probes wait until its bounds stop changing. At the start the states are focus and `:has-document`. Drawing a
+  rectangle with the Shape tool left `SelectedShapeType` at Rectangle. Disarming dropped `SelectedShapeType` to None and
+  the tool to None. Clicking the rectangle's left edge then showed `:shape-selected`, with `SelectedShapeType` still
+  None, so `SelectedShapeType` can't identify a selection: it is None whenever the tool is None. Clicking empty page
+  cleared the state. A click with the Text tool created nothing (the tool went back to None, no state, no annotation).
+  Dragging a box with the Text tool did create a `FreeText` annotation, with the tool at Text and `SelectedShapeType`
+  at Text while armed, and no state beyond pointer-over. Typing into it changed no state, and the focus stayed on the
+  viewer throughout. Clicking empty page next, with the Text tool still armed, showed `:editing-text` together with
+  `:shape-selected` (the new click starts another box, and in headless input that click threw an
+  `ObjectDisposedException` from the viewer's pointer handler). Disarming and clicking the dragged text box's left edge
+  showed no state at all. The Shape tool with `SelectedShapeType` set to `ShapeType.Text` ignored it: it drew a rectangle
+  (`Square` annotation, `SelectedShapeType` Rectangle), and clicking its edge showed `:shape-selected` as for any shape
+  (on some runs an edge click missed and showed nothing, so edge clicks in tests need care). The page ended with
+  `FreeText` and `Square` annotations. So the only thing that told a text box from a shape was `:editing-text`, which
+  appears while a box is being edited and not when an existing one is selected; a selected text box showed no state, and
+  nothing found tells a selected text box from a selected shape. Task 6's `Selection()` can use `:editing-text` for
+  editing, and `:shape-selected` means a shape or a text box that is not editing; it can't tell those apart from states.
+- **Probe 6 (observed 2026-11-05, keyed run).** The built-in format menus offer six fonts in this order: Helvetica,
+  Arial, Times New Roman, Courier, Georgia, Verdana. They offer fifteen sizes: 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32,
+  36, 48, 60 and 72. The colour swatch panel holds the palette in this order: black, #404040, grey (#808080), #BFBFBF,
+  #DEDEDE, #EDEDED, white, then pastels #FF8080, #FFBF80, #FFEB80, #80E080, #80BFFF, #C080FF, #FF80FF, then strong colours
+  #CC0000, #CC6600, #CCA300, #009900, #0066CC, #6600CC, #CC00CC. The defaults are: font Helvetica, size 12, highlight
+  #FACD5A at half opacity, underline green, strikeout red, squiggly blue, note #FFF09A, draw red at width 2, shape fill
+  white and stroke black at width 2, no stamp colour, zoom 0.05 to 5. Setting `SearchQuery` to "fixture" searched by
+  itself: one result at index 0 (zero-based), `FindNext` stayed at 0 (one result), and `ClearSearch` gave an empty query,
+  no results and index -1. So `SearchCountText` in Task 4 counts from `index + 1`, and shows nothing at -1.
