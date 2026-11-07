@@ -105,7 +105,7 @@ The app was built in Claude's scratchpad and kept out of the repository.
   wrong one, `package.sh`'s checks (§5) would stop it.
 - **CI.** The macOS leg builds the app once more, after its tests, with the property set
   (`dotnet build CoffeePdf/CoffeePdf.csproj --configuration Release -p:CoffeePdfDevTools=true`). That way the
-  `#if COFFEEPDF_DEVTOOLS` code compiles under `TreatWarningsAsErrors` and doesn't rot. No package CI makes sets it,
+  `#if COFFEEPDF_DEVTOOLS` code compiles under `TreatWarningsAsErrors` and doesn't rot. None of CI's packages sets it,
   neither a tag's nor a run by hand.
 
 ## 5. The package (call)
@@ -113,10 +113,11 @@ The app was built in Claude's scratchpad and kept out of the repository.
 - **`package.sh`** takes `COFFEEPDF_DEVTOOLS`, an environment option like its others. `1` asks for the developer tools.
   Any other value that isn't empty stops it, so a typo can't make a build without them. With it, `package.sh`:
   - stops when `SIGN_IDENTITY` is set, since a signed build is a release candidate;
-  - stops when the version has no label (`1.2.3`), or a label beginning with `rc`, as a release candidate's does
-    (`1.2.3-rc1`). So `1.1.0-toolbar.5` is allowed;
+  - stops when the version has no label (`1.2.3`), or a label beginning with `rc` in any case, as a release
+    candidate's does (`1.2.3-rc1`, `1.2.3-RC1`). So `1.1.0-toolbar.5` is allowed;
   - publishes with `-p:CoffeePdfDevTools=true`;
-  - names the disk image `CoffeePDF-<version>-devtools.dmg`;
+  - names the app `CoffeePDF-devtools.app`, in `packaging/mac/out` and in the disk image, so it never takes a plain
+    build's place, and the disk image `CoffeePDF-<version>-devtools.dmg`;
   - warns as loudly as it does for a build without a signature: "WITH the developer tools: any process running as you
     can read and drive this app. Never hand it beyond this Mac."
 - **`check-notices.py`** gets a `--devtools` flag, which `package.sh` passes when `COFFEEPDF_DEVTOOLS=1`:
@@ -124,15 +125,19 @@ The app was built in Claude's scratchpad and kept out of the repository.
     with `COFFEEPDF_DEVTOOLS=1` may carry the developer tools.
   - **With the flag,** a `deps.json` that doesn't list it is a problem: `COFFEEPDF_DEVTOOLS=1` asked for the developer
     tools, but the publish doesn't carry them.
-  - **With the flag, the notices check leaves out** `AvaloniaUI.DiagnosticsSupport` and every package that only it
-    brings in. Those are found from the dependencies `deps.json` lists for each library, starting from the app's own
-    project. A package that the app also reaches without passing through `AvaloniaUI.DiagnosticsSupport` stays
-    checked, as does everything else.
+  - **With the flag, the notices check leaves out** `AvaloniaUI.DiagnosticsSupport`, every package that only it
+    brings in, and the native libraries only those bring. Those are found from the dependencies `deps.json` lists for
+    each library, starting from the app's own project, matching package names in any case, as NuGet does. A package
+    that the app also reaches without passing through `AvaloniaUI.DiagnosticsSupport` still needs its section, but not
+    its version, since NuGet takes the highest version either asks for. Everything else stays checked.
   - **`test_check_notices.py`** covers each case on made-up `deps.json` files:
     - a build without the flag that carries the developer tools;
     - a build with the flag that doesn't carry them;
     - the packages left out, and nothing else;
-    - a package that both the app and `AvaloniaUI.DiagnosticsSupport` bring in, which stays checked;
+    - a package that both the app and `AvaloniaUI.DiagnosticsSupport` bring in, which still needs its section, though
+      not the version the tools raised it to;
+    - a native library that only the developer tools bring;
+    - dependencies spelled in another case;
     - a build with the flag that is missing another component's notice, which still stops.
 - **`package.sh` then checks the binary itself,** on the bytes that ship: `AvaloniaUI.DiagnosticsSupport.Avalonia.dll`
   must be in a binary made with `COFFEEPDF_DEVTOOLS=1`, and in no other (§3 says why the file name is the test).
@@ -176,13 +181,14 @@ them (§5).
    - First, the owner quits any other CoffeePDF, which may hold unsaved markups. Claude never quits or kills a
      CoffeePDF it didn't start. The test build has the same bundle identifier, which computer use and the Dock go by
      (found while planning).
-   - Claude starts the bundle's binary directly (`CoffeePDF.app/Contents/MacOS/CoffeePDF <file.pdf>`), not through
-     `open`, which would let LaunchServices hand the file to a running CoffeePDF with the same bundle identifier.
+   - Claude starts the bundle's binary directly (`CoffeePDF-devtools.app/Contents/MacOS/CoffeePDF <file.pdf>`), not
+     through `open`, which would let LaunchServices hand the file to a running CoffeePDF with the same bundle
+     identifier.
    - `COFFEEPDF_SETTINGS_DIR`, `COFFEEPDF_LOG_DIR` and `HEALDAN_HELPER_DEV_ROOT` point at folders in Claude's
      scratchpad.
    - The settings there give the markup author `Test Reviewer` and have already answered the first launch's Healdan
      question.
-   - The PDFs are ones the tests' fixtures make, written to the scratchpad.
+   - The PDFs are ones the tests' fixtures make, written to the scratchpad. The launch refuses a PDF outside its folder.
    - Nothing touches the owner's settings, Helper or documents, and no PDF goes into the repository.
 3. **Attach** with `attach-to-app`, giving the process id.
 4. **The pass.** Claude goes through the pull request's list of the owner's checks, item by item:

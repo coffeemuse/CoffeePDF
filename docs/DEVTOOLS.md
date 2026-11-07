@@ -39,16 +39,17 @@ handing the build to the owner for checks. Releases never carry them. The design
 ## Building a test build with them
 
 ```bash
-COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh 1.1.0-toolbar.5      # CoffeePDF.app, and CoffeePDF-1.1.0-toolbar.5-devtools.dmg
+COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh 1.1.0-toolbar.5      # CoffeePDF-devtools.app, and CoffeePDF-1.1.0-toolbar.5-devtools.dmg
 dotnet run --project CoffeePdf -p:CoffeePdfDevTools=true -- file.pdf # from the source
 ```
 
 `package.sh` refuses `COFFEEPDF_DEVTOOLS=1` in three cases:
 - with `SIGN_IDENTITY` set;
 - for a version with no label (`1.2.3`);
-- for a release candidate's version (`1.2.3-rc1`).
+- for a release candidate's version (`1.2.3-rc1`, in any case).
 
-Any other value that isn't empty stops it too.
+Any other value that isn't empty stops it too. The app is `CoffeePDF-devtools.app`, in `packaging/mac/out` and in the
+disk image, so it never takes a plain build's place.
 
 A release can't carry them, for three independent reasons:
 - a signed build refuses them;
@@ -56,7 +57,8 @@ A release can't carry them, for three independent reasons:
 - the binary check refuses a binary holding `AvaloniaUI.DiagnosticsSupport.Avalonia.dll`.
 
 `check-notices.py --devtools` leaves out only the developer tools' packages: `AvaloniaUI.DiagnosticsSupport`, and what
-only it brings in. A build with them never leaves the owner's Mac (owner, 2026-11-06).
+only it brings in, with their native libraries. A package the app needs too still needs its section, though not its
+version, which the tools may raise. A build with them never leaves the owner's Mac (owner, 2026-11-06).
 
 ## The pass before a hand-off
 
@@ -67,10 +69,12 @@ Test packages handed to the owner carry the developer tools, and Claude runs thi
    didn't start. The test build has the same bundle identifier, which computer use and the Dock go by.
 2. **Make the PDFs:**
    `COFFEEPDF_PASS_DIR="$SCRATCH/pdfs" dotnet test CoffeePdf.Core.Tests --filter "FullyQualifiedName~PassFilesProbe.Writes_the_pass_pdfs"`.
-   That writes `plain.pdf` and `with-note.pdf`, the second with a note by another app.
+   That writes `plain.pdf` and `with-note.pdf`, the second with a note by another app. It runs alone, and refuses to
+   write over PDFs already there, which may hold a pass's saves, so each pass takes a new `$SCRATCH`.
 3. **Launch it walled off, in the background:**
-   `APP=<the build's CoffeePDF.app> packaging/mac/launch-test-build.sh "$SCRATCH" "$SCRATCH/pdfs/plain.pdf"`.
+   `APP=<the build's CoffeePDF-devtools.app> packaging/mac/launch-test-build.sh "$SCRATCH" "$SCRATCH/pdfs/plain.pdf"`.
    - The settings, log and Helper folders go in `$SCRATCH`, with the markup author `Test Reviewer`.
+   - It refuses a PDF that isn't a file inside `$SCRATCH`, so a save changes only the pass's own copy.
    - It runs until the app quits, and its process id, which is the app's, is in `$SCRATCH/coffeepdf.pid`.
    - Walled off covers CoffeePDF's own files only. What macOS keeps per bundle identifier is shared with the owner's
      install, since the identifier is the same: the app's defaults domain (for example the open panel's last folder),
@@ -95,7 +99,8 @@ Test packages handed to the owner carry the developer tools, and Claude runs thi
 7. **Note it in the pull request.** Mark each check Claude ran on the list of the owner's checks, with the build and the
    result, such as "Claude's pass, 1.1.0-toolbar.5-devtools: passed". What's left is the owner's: the look beside
    Preview's, sharpness on Retina, VoiceOver, the real Helper and server, and anything computer use couldn't reach.
-8. **Quit:** `kill "$(cat "$SCRATCH/coffeepdf.pid")"`.
+8. **Quit:** `APP=<the same app> packaging/mac/launch-test-build.sh --quit "$SCRATCH"`. It ends the process only
+   while it's still that app's binary, since the id may have gone to another process after a crash or a ⌘Q.
 
 ## When the owner's check finds something
 

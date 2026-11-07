@@ -13,4 +13,22 @@ public sealed class PassFolderFactAttribute : FactAttribute
         if (Environment.GetEnvironmentVariable(Variable) is not { Length: > 0 })
             Skip = $"For Claude's pass on a test build: set {Variable} to a folder outside the repository";
     }
+
+    /// <summary>
+    /// The folder <see cref="Variable"/> names. It throws unless that's an absolute path outside any git work tree, as
+    /// launch-test-build.sh asks of its folder, so no PDF lands in the repository or beside the tests' binaries.
+    /// </summary>
+    public static string Folder()
+    {
+        var folder = Environment.GetEnvironmentVariable(Variable)!;
+        if (!Path.IsPathFullyQualified(folder))
+            throw new InvalidOperationException($"{Variable} must be an absolute path, outside the repository");
+        for (var at = new DirectoryInfo(Path.GetFullPath(folder)); at is not null; at = at.Parent)
+        {
+            var git = Path.Combine(at.FullName, ".git");
+            if (Directory.Exists(git) || File.Exists(git))
+                throw new InvalidOperationException($"{Variable} must name a folder outside any git work tree");
+        }
+        return folder;
+    }
 }

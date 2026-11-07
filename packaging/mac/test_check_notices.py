@@ -192,6 +192,28 @@ class TheDeveloperTools(unittest.TestCase):
         self.assertSays(check.problems(document, NOTICES, LIBRARIES, devtools=True),
                         "Shared.Lib 1.0.0, which no section names")
 
+    def test_a_package_they_raise_needs_its_section_but_not_its_version(self):
+        document = with_devtools(devtools={"Helper.Lib": "0.5.0"})
+        target = document["targets"][document["runtimeTarget"]["name"]]
+        # NuGet took the higher version the tools asked for, so the publish carries 0.6.0, and a release 0.5.0.
+        target["Helper.Lib/0.6.0"] = target.pop("Helper.Lib/0.5.0")
+        document["libraries"]["Helper.Lib/0.6.0"] = document["libraries"].pop("Helper.Lib/0.5.0")
+        self.assertEqual(check.problems(document, NOTICES, LIBRARIES, devtools=True), [])
+
+    def test_a_native_library_only_they_bring_is_left_out(self):
+        document = with_devtools()
+        target = document["targets"][document["runtimeTarget"]["name"]]
+        target["AvaloniaUI.DiagnosticsSupport/2.2.3"]["native"] = {"runtimes/osx/native/libavdt.dylib": {}}
+        self.assertEqual(check.problems(document, NOTICES, LIBRARIES + ["libavdt.dylib"], devtools=True), [])
+
+    def test_dependencies_are_followed_whatever_their_case(self):
+        # NuGet's IDs ignore case, and deps.json spells a dependency as the package depending on it does.
+        document = depending(with_devtools(project={"microsoft.io.recyclablememorystream": "3.0.1"}), {
+            "AvaloniaUI.DiagnosticsSupport/2.2.3": {"microsoft.extensions.logging.abstractions": "8.0.0"}})
+        self.assertEqual(check.devtools_only(document), {
+            "AvaloniaUI.DiagnosticsSupport", "Microsoft.Extensions.Logging.Abstractions",
+            "Microsoft.Extensions.DependencyInjection.Abstractions"})
+
     def test_a_test_build_still_needs_every_other_notice(self):
         document = with_devtools(("New.Managed", "1.0.0", "runtime"), project={"New.Managed": "1.0.0"})
         self.assertSays(check.problems(document, NOTICES, LIBRARIES, devtools=True),

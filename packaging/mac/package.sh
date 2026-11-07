@@ -18,7 +18,8 @@
 #   OUT_DIR         where the app and the disk image go; packaging/mac/out by default.
 #   COFFEEPDF_DEVTOOLS  1 for a test build with Avalonia's Developer Tools (the devtools spec, docs/DEVTOOLS.md), which
 #                   avdt can then inspect and drive. It stops with SIGN_IDENTITY set, or for a version with no label
-#                   (1.2.3) or a release candidate's (1.2.3-rc1), and the disk image is CoffeePDF-<version>-devtools.dmg.
+#                   (1.2.3) or a release candidate's (1.2.3-rc1, in any case), and the app is CoffeePDF-devtools.app, in
+#                   CoffeePDF-<version>-devtools.dmg, so it never takes a plain build's place.
 #                   Unset, the build must not carry them, and the checks below stop one that does.
 #
 # The steps, as the Healdan Helper's: a self-contained, single-file .NET publish for osx-arm64 with no .pdb, since any
@@ -56,12 +57,13 @@ if [ "$devtools" = true ]; then
   label=${version#"$numeric"}
   [ -n "$label" ] ||
     die "COFFEEPDF_DEVTOOLS=1 is for a test build, whose version has a label, such as 1.1.0-toolbar.5, but '$version' is a release's"
-  [[ "$label" != -rc* ]] ||
+  [[ "$label" != -[Rr][Cc]* ]] ||
     die "COFFEEPDF_DEVTOOLS=1 is for a test build, but '$version' is a release candidate's, which never carries the developer tools"
 fi
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
+. "$here/devtools.sh"
 [ -f "$here/CoffeePDF.icns" ] || die "packaging/mac/CoffeePDF.icns is missing: make-icon.sh makes it"
 # The licences of what the app carries ask for their notices to go with it.
 notices="$repo/THIRD-PARTY-NOTICES.md"
@@ -69,9 +71,9 @@ notices="$repo/THIRD-PARTY-NOTICES.md"
 out=${OUT_DIR:-"$here/out"}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
-app="$out/CoffeePDF.app"
 suffix=
 [ "$devtools" = false ] || suffix=-devtools
+app="$out/CoffeePDF$suffix.app"
 dmg="$out/CoffeePDF-$version$suffix.dmg"
 work=$(mktemp -d "${TMPDIR:-/tmp}/coffeepdf-package.XXXXXX")
 trap 'rm -rf "$work"' EXIT
@@ -139,10 +141,8 @@ for file in "$work/publish"/*; do
   file -b "$file" | grep -q '^Mach-O' || die "the publish left $(basename "$file"), which isn't native code, beside the binary"
 done
 [ -f "$work/publish/CoffeePDF" ] || die "the publish made no CoffeePDF binary"
-# The bytes that ship carry the developer tools only in a build made with COFFEEPDF_DEVTOOLS=1. Avalonia's own
-# assemblies name the package in an InternalsVisibleTo, so this looks for the assembly's file name, which only the
-# bundle of a build that carries it holds (the devtools spec's §3).
-if grep -a -q -F 'AvaloniaUI.DiagnosticsSupport.Avalonia.dll' "$work/publish/CoffeePDF"; then
+# The bytes that ship carry the developer tools only in a build made with COFFEEPDF_DEVTOOLS=1 (devtools.sh).
+if carries_devtools "$work/publish/CoffeePDF"; then
   [ "$devtools" = true ] ||
     die "the binary carries the developer tools (AvaloniaUI.DiagnosticsSupport), which only a test build made with COFFEEPDF_DEVTOOLS=1 may carry"
 else
@@ -257,7 +257,7 @@ fi
 
 say "Building $dmg"
 mkdir "$work/image"
-ditto "$app" "$work/image/CoffeePDF.app"
+ditto "$app" "$work/image/$(basename "$app")"
 ln -s /Applications "$work/image/Applications"
 made=false
 for attempt in 1 2 3; do # hdiutil is sometimes "busy" on CI's runners

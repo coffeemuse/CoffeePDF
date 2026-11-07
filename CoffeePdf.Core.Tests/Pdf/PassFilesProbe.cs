@@ -7,8 +7,10 @@ namespace CoffeePdf.Core.Tests.Pdf;
 /// <summary>
 /// The PDFs for Claude's pass on a test build (docs/DEVTOOLS.md, the devtools spec's §6.3), in the folder that
 /// <see cref="PassFolderFactAttribute.Variable"/> names, outside the repository. One probe writes them before the pass,
-/// and the other reads back what the test build's saves wrote into them. Run with: COFFEEPDF_PASS_DIR=&lt;folder&gt;
-/// dotnet test CoffeePdf.Core.Tests --filter FullyQualifiedName~PassFilesProbe --logger "console;verbosity=detailed"
+/// and the other reads back what the test build's saves wrote into them, so each runs on its own, at its step of the
+/// pass: COFFEEPDF_PASS_DIR=&lt;folder&gt; dotnet test CoffeePdf.Core.Tests --filter
+/// "FullyQualifiedName~PassFilesProbe.Writes_the_pass_pdfs", and later ~PassFilesProbe.Reads_back_the_pass_pdfs with
+/// --logger "console;verbosity=detailed". The first never writes over a PDF already there.
 /// </summary>
 [Trait("Category", "Probe")]
 public sealed class PassFilesProbe(ITestOutputHelper output)
@@ -16,11 +18,16 @@ public sealed class PassFilesProbe(ITestOutputHelper output)
     /// <summary>The authors a pass's PDFs may hold: the tests' made-up one, and that of the fixture's note from another app.</summary>
     private static readonly string[] Authors = ["Test Reviewer", MinimalPdf.ForeignNoteAuthor];
 
-    private static string Folder => Environment.GetEnvironmentVariable(PassFolderFactAttribute.Variable)!;
+    private static string Folder => PassFolderFactAttribute.Folder();
 
     [PassFolderFact]
     public void Writes_the_pass_pdfs()
     {
+        // Never over PDFs already there: the other probe reads back what the test build saved into them, and fresh
+        // fixtures in their place would pass it without testing anything. A new pass takes a new folder.
+        foreach (var name in new[] { "plain.pdf", "with-note.pdf" })
+            Assert.False(File.Exists(Path.Combine(Folder, name)), $"{name} is already in the pass's folder, and may "
+                + $"hold a pass's saves: give {PassFolderFactAttribute.Variable} a new folder");
         Directory.CreateDirectory(Folder);
         Write("plain.pdf", MinimalPdf.Build());
         Write("with-note.pdf", MinimalPdf.Build(withForeignNote: true));
@@ -49,7 +56,8 @@ public sealed class PassFilesProbe(ITestOutputHelper output)
 
     private void Write(string name, byte[] pdf)
     {
-        File.WriteAllBytes(Path.Combine(Folder, name), pdf);
+        using var file = new FileStream(Path.Combine(Folder, name), FileMode.CreateNew);
+        file.Write(pdf);
         output.WriteLine($"Wrote {name}");
     }
 }

@@ -10,8 +10,10 @@ at the top. Each native library in the publish folder must be named, in backtick
 blocks, which hold other projects' texts, are left out, so nothing in them counts.
 
 --devtools is for a test build made with COFFEEPDF_DEVTOOLS=1 (the devtools spec's §5). It needs no notices for
-Avalonia's Developer Tools, since it never leaves the owner's Mac, so AvaloniaUI.DiagnosticsSupport, and each package
-the app's projects reach only through it, are left out. Everything else is checked as for a release. Without the flag, a
+Avalonia's Developer Tools, since it never leaves the owner's Mac, so AvaloniaUI.DiagnosticsSupport, each package the
+app's projects reach only through it, and the native libraries only those bring, are left out. A package that both the
+tools and the app's projects reach still needs its section, but not its version: NuGet takes the highest that either
+asks for, so the tools may raise it above a release's. Everything else is checked as for a release. Without the flag, a
 publish that carries the developer tools is refused, and with it, one that doesn't.
 
 It prints each problem and exits 1 if there's any, or if it can't read its files: a check that can't finish passes
@@ -73,13 +75,15 @@ def components(deps):
     return sorted(carried)
 
 
-def devtools_only(deps):
-    """The names of AvaloniaUI.DiagnosticsSupport and of each package only it brings in, which are those the app's
-    projects reach only through it, by the dependencies deps.json lists for each library. Empty when it isn't there."""
+def devtools_split(deps):
+    """By the dependencies deps.json lists for each library: the keys of AvaloniaUI.DiagnosticsSupport and of each
+    package only it brings in, which are those the app's projects reach only through it, then the keys of the packages
+    it and the app's projects both reach. Both are empty when it isn't there."""
     target = deps["targets"][deps["runtimeTarget"]["name"]]
-    keys = {key.rsplit("/", 1)[0]: key for key in target}
-    if DEVTOOLS not in keys:
-        return set()
+    # NuGet's IDs ignore case, and deps.json spells each dependency as the package that depends on it does.
+    keys = {key.rsplit("/", 1)[0].lower(): key for key in target}
+    if DEVTOOLS.lower() not in keys:
+        return set(), set()
 
     def reached(starts, avoid=None):
         seen, todo = set(), list(starts)
@@ -88,14 +92,20 @@ def devtools_only(deps):
             if key in seen or key == avoid:
                 continue
             seen.add(key)
-            todo.extend(keys[name] for name in target[key].get("dependencies", {}) if name in keys)
+            todo.extend(keys[name.lower()] for name in target[key].get("dependencies", {}) if name.lower() in keys)
         return seen
 
     projects = [key for key, library in deps["libraries"].items() if library["type"] == "project" and key in target]
     if not projects:
         raise KeyError("deps.json lists no project")  # nothing to tell the tools' packages from the app's own
-    kept = reached(projects, avoid=keys[DEVTOOLS])
-    return {key.rsplit("/", 1)[0] for key in reached([keys[DEVTOOLS]]) - kept}
+    kept = reached(projects, avoid=keys[DEVTOOLS.lower()])
+    tools = reached([keys[DEVTOOLS.lower()]])
+    return tools - kept, tools & kept
+
+
+def devtools_only(deps):
+    """The names of AvaloniaUI.DiagnosticsSupport and of each package only it brings in (devtools_split)."""
+    return {key.rsplit("/", 1)[0] for key in devtools_split(deps)[0]}
 
 
 def problems(deps, notices, libraries, devtools=False):
@@ -103,7 +113,14 @@ def problems(deps, notices, libraries, devtools=False):
     said = ["the heading \"## %s\" comes more than once" % heading for heading in repeated]
     # A test build made with COFFEEPDF_DEVTOOLS=1 (devtools) needs no notices for the developer tools, since it never
     # leaves the owner's Mac. Anything else that carries them is refused, and its notices for them aren't asked for.
-    left_out = devtools_only(deps)
+    only, shared = devtools_split(deps)
+    left_out = {key.rsplit("/", 1)[0] for key in only}
+    raised = {key.rsplit("/", 1)[0] for key in shared}
+    target = deps["targets"][deps["runtimeTarget"]["name"]]
+
+    def natives(keys):
+        return {os.path.basename(path) for key in keys for path in target[key].get("native", {})}
+    tools_libraries = natives(only) - natives(set(target) - only)
     if left_out and not devtools:
         said.append("the publish carries %s, the developer tools, which only a test build made with "
                     "COFFEEPDF_DEVTOOLS=1 may carry" % DEVTOOLS)
@@ -122,6 +139,8 @@ def problems(deps, notices, libraries, devtools=False):
             said.append("%s is named by more than one section (%s)" % (name, ", ".join(named)))
             continue
         heading = named[0]
+        if name in raised:
+            continue  # the tools may have raised its version above a release's, so only its section is asked for
         given = version_given(found[heading])
         if given != version:
             said.append("the app carries %s %s, but the section \"%s\" gives %s: update it, with the notice copied from "
@@ -130,6 +149,8 @@ def problems(deps, notices, libraries, devtools=False):
             said.append("the app carries %s %s, but the table's row for \"%s\" gives %s"
                         % (name, version, heading, rows.get(heading, "nothing (there's no row)")))
     for library in libraries:
+        if library in tools_libraries:
+            continue
         if not any("`%s`" % library in body for body in found.values()):
             said.append("the publish has %s, which no section names: add its component's section" % library)
     return said
