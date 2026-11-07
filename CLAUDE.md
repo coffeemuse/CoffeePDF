@@ -26,6 +26,7 @@ python3 -I packaging/mac/test_check_notices.py               # the tests of pack
 COFFEEPDF_PROBES=1 dotnet test CoffeePdf.sln --filter Category=Probe --logger "console;verbosity=detailed"   # the probes, which print what they find; the variable runs the heavy ones
 dotnet run --project CoffeePdf -- <file.pdf>                 # the app
 packaging/mac/package.sh 1.2.3                               # CoffeePDF.app and its .dmg, on a Mac
+COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh 1.2.3-name.1   # a test build with Avalonia's Developer Tools (docs/DEVTOOLS.md)
 packaging/mac/make-icon.sh                                   # CoffeePDF.icns from packaging/icon/CoffeePDF.png; commit it
 ```
 
@@ -65,9 +66,14 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
   the run's own, and the flows' tests give each window a `FakeHelper`'s link.
 - **Nothing logs the channel's secret or a file's contents** (`CoffeeLog`). Log an exception by its type.
 - **Packaging:** only native code may sit in the bundle's `Contents/MacOS`, which `package.sh` checks.
+- **Test builds carry Avalonia's Developer Tools; releases never do.** A test build handed to the owner is made with
+  `COFFEEPDF_DEVTOOLS=1`, and gets Claude's pass first (`docs/DEVTOOLS.md`). `package.sh` refuses them in a signed
+  build or for a release's or a release candidate's version, and stops a package that carries them without the switch.
+  `AvaloniaUI.DiagnosticsSupport` moves with the `avdt` tool's version.
 - **Third-party notices:** a change that adds a component to the app, or changes one's version, updates its section
   in `THIRD-PARTY-NOTICES.md`, with the notice copied from the package or its upstream repository, never retyped.
   `package.sh` puts the file in `Contents/Resources`. It stops without it, and `check-notices.py` stops it when the
   publish carries a package, a version or a native library the file doesn't give. A newer SDK can bring a newer .NET
-  runtime with no change here, so that's the usual one.
+  runtime with no change here, so that's the usual one. `check-notices.py --devtools` leaves out only the
+  developer tools' packages, for a build made with `COFFEEPDF_DEVTOOLS=1`, which never leaves the owner's Mac.
 - **Pushes go through the owner.** Never push, tag or open a pull request without the owner's go-ahead.

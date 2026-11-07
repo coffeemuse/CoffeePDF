@@ -33,6 +33,10 @@
     `Contents/Resources`, and stops without it, or when it doesn't give a component, or a version, the publish carries
     (`check-notices.py`). `v1.0.0` shipped without them, so the next release is the first to carry them. Until then,
     the owner can attach the file to `v1.0.0`'s GitHub release.
+  - Avalonia's Developer Tools in test builds, designed on 2026-11-06
+    ([spec](superpowers/specs/2026-11-06-coffeepdf-devtools-design.md),
+    [plan](superpowers/plans/2026-11-06-coffeepdf-devtools.md)) and built on 2026-11-06. Claude runs a pass on each test
+    build before the owner's checks ([how](DEVTOOLS.md)), and the acceptance run on the toolbar's bug is next.
 
 ## v1: read and mark up
 

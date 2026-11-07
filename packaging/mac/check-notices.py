@@ -1,13 +1,20 @@
 """Checks THIRD-PARTY-NOTICES.md against what package.sh's publish put in the app (spec §12), so a package can't carry
 a component, or a version of one, whose notice nobody added.
 
-    python3 -I check-notices.py <deps.json> <THIRD-PARTY-NOTICES.md> <publish folder>
+    python3 -I check-notices.py [--devtools] <deps.json> <THIRD-PARTY-NOTICES.md> <publish folder>
 
 <deps.json> is the publish's own, which lists the .NET runtime pack and every package the app carries, with their
 versions. For each one, exactly one section of the notices must name it, by its heading or in backticks in its
 **Version:** line. That line must begin with the version the publish used, and so must the section's row in the table
 at the top. Each native library in the publish folder must be named, in backticks, in a section. The notices' ```text
 blocks, which hold other projects' texts, are left out, so nothing in them counts.
+
+--devtools is for a test build made with COFFEEPDF_DEVTOOLS=1 (the devtools spec's §5). It needs no notices for
+Avalonia's Developer Tools, since it never leaves the owner's Mac, so AvaloniaUI.DiagnosticsSupport, each package the
+app's projects reach only through it, and the native libraries only those bring, are left out. A package that both the
+tools and the app's projects reach still needs its section, but not its version: NuGet takes the highest that either
+asks for, so the tools may raise it above a release's. Everything else is checked as for a release. Without the flag, a
+publish that carries the developer tools is refused, and with it, one that doesn't.
 
 It prints each problem and exits 1 if there's any, or if it can't read its files: a check that can't finish passes
 nothing.
@@ -22,6 +29,8 @@ HEADING = re.compile(r"^## (.+?)[ \t]*$", re.MULTILINE)
 # A **Version:** bullet runs over its indented lines, up to the next bullet or a blank line.
 VERSION = re.compile(r"^- \*\*Version:\*\*[ \t]+(.*?)(?=^- |^[ \t]*$|\Z)", re.MULTILINE | re.DOTALL)
 ROW = re.compile(r"^\| \[([^\]]+)\]\(#[^)]*\) \| ([^|]+?) \|", re.MULTILINE)
+# Avalonia's Developer Tools, which only a test build made with COFFEEPDF_DEVTOOLS=1 carries (the devtools spec's §5).
+DEVTOOLS = "AvaloniaUI.DiagnosticsSupport"
 
 
 def sections(notices):
@@ -66,10 +75,60 @@ def components(deps):
     return sorted(carried)
 
 
-def problems(deps, notices, libraries):
+def devtools_split(deps):
+    """By the dependencies deps.json lists for each library: the keys of AvaloniaUI.DiagnosticsSupport and of each
+    package only it brings in, which are those the app's projects reach only through it, then the keys of the packages
+    it and the app's projects both reach. Both are empty when it isn't there."""
+    target = deps["targets"][deps["runtimeTarget"]["name"]]
+    # NuGet's IDs ignore case, and deps.json spells each dependency as the package that depends on it does.
+    keys = {key.rsplit("/", 1)[0].lower(): key for key in target}
+    if DEVTOOLS.lower() not in keys:
+        return set(), set()
+
+    def reached(starts, avoid=None):
+        seen, todo = set(), list(starts)
+        while todo:
+            key = todo.pop()
+            if key in seen or key == avoid:
+                continue
+            seen.add(key)
+            todo.extend(keys[name.lower()] for name in target[key].get("dependencies", {}) if name.lower() in keys)
+        return seen
+
+    projects = [key for key, library in deps["libraries"].items() if library["type"] == "project" and key in target]
+    if not projects:
+        raise KeyError("deps.json lists no project")  # nothing to tell the tools' packages from the app's own
+    kept = reached(projects, avoid=keys[DEVTOOLS.lower()])
+    tools = reached([keys[DEVTOOLS.lower()]])
+    return tools - kept, tools & kept
+
+
+def devtools_only(deps):
+    """The names of AvaloniaUI.DiagnosticsSupport and of each package only it brings in (devtools_split)."""
+    return {key.rsplit("/", 1)[0] for key in devtools_split(deps)[0]}
+
+
+def problems(deps, notices, libraries, devtools=False):
     rows, found, repeated = sections(notices)
     said = ["the heading \"## %s\" comes more than once" % heading for heading in repeated]
+    # A test build made with COFFEEPDF_DEVTOOLS=1 (devtools) needs no notices for the developer tools, since it never
+    # leaves the owner's Mac. Anything else that carries them is refused, and its notices for them aren't asked for.
+    only, shared = devtools_split(deps)
+    left_out = {key.rsplit("/", 1)[0] for key in only}
+    raised = {key.rsplit("/", 1)[0] for key in shared}
+    target = deps["targets"][deps["runtimeTarget"]["name"]]
+
+    def natives(keys):
+        return {os.path.basename(path) for key in keys for path in target[key].get("native", {})}
+    tools_libraries = natives(only) - natives(set(target) - only)
+    if left_out and not devtools:
+        said.append("the publish carries %s, the developer tools, which only a test build made with "
+                    "COFFEEPDF_DEVTOOLS=1 may carry" % DEVTOOLS)
+    if devtools and not left_out:
+        said.append("COFFEEPDF_DEVTOOLS=1 asked for the developer tools, but the publish doesn't carry %s" % DEVTOOLS)
     for name, version in components(deps):
+        if name in left_out:
+            continue
         named = [heading for heading, body in found.items()
                  if heading == name or "`%s`" % name in (version_line(body) or "")]
         if not named:
@@ -80,6 +139,8 @@ def problems(deps, notices, libraries):
             said.append("%s is named by more than one section (%s)" % (name, ", ".join(named)))
             continue
         heading = named[0]
+        if name in raised:
+            continue  # the tools may have raised its version above a release's, so only its section is asked for
         given = version_given(found[heading])
         if given != version:
             said.append("the app carries %s %s, but the section \"%s\" gives %s: update it, with the notice copied from "
@@ -88,14 +149,19 @@ def problems(deps, notices, libraries):
             said.append("the app carries %s %s, but the table's row for \"%s\" gives %s"
                         % (name, version, heading, rows.get(heading, "nothing (there's no row)")))
     for library in libraries:
+        if library in tools_libraries:
+            continue
         if not any("`%s`" % library in body for body in found.values()):
             said.append("the publish has %s, which no section names: add its component's section" % library)
     return said
 
 
 def main(arguments):
+    devtools = "--devtools" in arguments
+    arguments = [argument for argument in arguments if argument != "--devtools"]
     if len(arguments) != 3:
-        print("usage: check-notices.py <deps.json> <THIRD-PARTY-NOTICES.md> <publish folder>", file=sys.stderr)
+        print("usage: check-notices.py [--devtools] <deps.json> <THIRD-PARTY-NOTICES.md> <publish folder>",
+              file=sys.stderr)
         return 2
     deps_path, notices_path, publish = arguments
     try:
@@ -104,7 +170,7 @@ def main(arguments):
         with open(notices_path, encoding="utf-8") as file:
             notices = file.read()
         libraries = sorted(name for name in os.listdir(publish) if name.endswith(".dylib"))
-        said = problems(deps, notices, libraries)
+        said = problems(deps, notices, libraries, devtools)
     except (OSError, ValueError, KeyError, TypeError) as error:
         print("THIRD-PARTY-NOTICES.md couldn't be checked (%s), so it doesn't pass" % type(error).__name__, file=sys.stderr)
         return 1

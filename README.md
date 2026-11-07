@@ -19,6 +19,7 @@ export AVALONIA_LICENSE_KEY=…   # from portal.avaloniaui.net; never commit it
 dotnet test CoffeePdf.sln
 dotnet run --project CoffeePdf -- path/to/file.pdf
 packaging/mac/package.sh 0.0.1   # CoffeePDF.app and its .dmg, on a Mac
+COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh 0.0.1-test.1   # a test build with Avalonia's Developer Tools (docs/DEVTOOLS.md)
 ```
 
 Run `git config core.hooksPath .githooks` once per clone, so the hooks (which need `python3`) keep personal details
