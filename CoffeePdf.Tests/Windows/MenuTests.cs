@@ -1,9 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Pdf.Core;
-using Avalonia.Controls.Pdf.Services;
 using Avalonia.Headless;
 using Avalonia.Input;
-using Avalonia.VisualTree;
 using CoffeePdf.Tests.Fixtures;
 using CoffeePdf.Windows;
 
@@ -27,7 +25,7 @@ public sealed class MenuTests : IDisposable
     private static readonly (string Header, string Gesture)[] Shortcuts =
     [
         ("Open…", "Meta+O"), ("Close", "Meta+W"), ("Save", "Meta+S"), ("Save As…", "Meta+Shift+S"), ("Print…", "Meta+P"),
-        ("Undo", "Meta+Z"), ("Redo", "Meta+Shift+Z"), ("Find Next", "Meta+G"), ("Find Previous", "Meta+Shift+G"),
+        ("Undo", "Meta+Z"), ("Redo", "Meta+Shift+Z"), ("Find…", "Meta+F"), ("Find Next", "Meta+G"), ("Find Previous", "Meta+Shift+G"),
         ("Actual Size", "Meta+D0"), ("Zoom to Fit", "Meta+D9"), ("Zoom In", "Meta+OemPlus"), ("Zoom Out", "Meta+OemMinus"),
         ("Hide Sidebar", "Alt+Meta+D1"), ("Thumbnails", "Alt+Meta+D2"), ("Table of Contents", "Alt+Meta+D3"),
         ("Bookmarks", "Alt+Meta+D4"), ("Previous Page", "Alt+Meta+Up"), ("Next Page", "Alt+Meta+Down"),
@@ -160,13 +158,14 @@ public sealed class MenuTests : IDisposable
     public async Task Undo_in_a_focused_text_field_undoes_the_typing_not_the_markup()
     {
         // The owner's check 10: Edit › Undo's ⌘Z reached the menu first and undid a note while the search box had focus.
+        // The search box is now the toolbar's.
         var path = Fixture();
 
         var (typed, afterUndo, markupStillUndoable) = await Headless.RunAsync(async () =>
         {
             var (window, _) = await TestWindows.OpenAsync(path);
             await window.Viewer.AddStickyNoteAsync(0, 300, 400, "Reviewed");
-            var search = window.Viewer.GetVisualDescendants().OfType<TextBox>().First(t => t.IsEffectivelyVisible);
+            var search = window.Toolbar.SearchBox;
             search.Focus();
             window.KeyTextInput("fox");
             await TestWindows.WaitForAsync(() => search.Text == "fox");
@@ -245,29 +244,5 @@ public sealed class MenuTests : IDisposable
             await window.PrintAndReportAsync();
             return true;
         });
-    }
-
-    private sealed class FailingPrinter : IPrintService
-    {
-        public bool IsSupported => true;
-
-        public Task PrintAsync(IPdfDocument document, PrintOptions? options = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("No printer");
-
-        public Task ShowPrintPreviewAsync(IPdfDocument document, PrintOptions? options = null) => Task.CompletedTask;
-    }
-
-    private sealed class FakePrinter : IPrintService
-    {
-        public List<string?> Titles { get; } = [];
-        public bool IsSupported => true;
-
-        public Task PrintAsync(IPdfDocument document, PrintOptions? options = null, CancellationToken cancellationToken = default)
-        {
-            Titles.Add(options?.Title);
-            return Task.CompletedTask;
-        }
-
-        public Task ShowPrintPreviewAsync(IPdfDocument document, PrintOptions? options = null) => Task.CompletedTask;
     }
 }

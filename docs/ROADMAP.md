@@ -44,16 +44,28 @@
 | 3. Healdan's milestone | Spec §4.4, through its own spec in Healdan's repository: Healdan's M3.6, "PDFs in CoffeePDF" | built 2026-11-01 in Healdan ([spec](https://github.com/Healdan-Project/healdan/blob/master/docs/superpowers/specs/2026-11-01-m3-6-pdfs-in-coffeepdf-design.md)), merged in Healdan-Project/healdan#150 and Healdan-Project/healdan#151; the owner's checks on Healdan Helper 0.5.0-rc1 passed 2026-11-01; Healdan Helper 0.5.0 released 2026-11-01; findings in the spec's §16 |
 | 4. Acceptance | Spec §2.5 on the owner's Mac against the owner's server, then v1.0 | walkthrough passed 2026-11-01 on Healdan Helper 0.5.0-rc1 (M3.6's checks), with step 1 by a typed link, then from the web page after #151; Save as New Version with nothing to save fixed 2026-11-01; release `v0.3.0`, with the fix, passed Gatekeeper 2026-11-01; finding 3 (the full rewrite) settled 2026-11-02, nothing lost; its fix, a full save for unsigned PDFs, built 2026-11-03 (the spec's §16, Phase 3); on 2026-11-05, on the test build 0.3.1-fullsave.1, the owner's checks of that fix passed and the Save as New Version fix was checked, finding 2 was settled with no bug, and the owner decided that a save breaking a signature nested under a parent field does as now (a known limit for v1); left: v1.0 |
 
+## After v1.0
+
+| Piece | What | Status |
+|---|---|---|
+| CoffeePDF's own toolbar | The PdfViewer's toolbar hidden, and a row of CoffeePDF's own that drives the viewer through its public API ([spec](superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md)) | designed 2026-11-05; built on that date ([plan](superpowers/plans/2026-11-05-coffeepdf-toolbar.md)); Fluent's notice added to `THIRD-PARTY-NOTICES.md` 2026-11-06, after #16 merged; the owner's checks on the Mac passed 2026-11-06 on the test build 1.1.0-toolbar.5, check 1 after a fix (the colour swatch) and check 6 after a change: the PdfViewer can't restyle a selection from outside it, so the format menus hide while markup is selected (the spec's §10) |
+
 ## v2
 
 Each gets its own design session first. Where the PdfViewer lacks a feature, CoffeePDF calls PDFium itself, and it
-moves to the control's own when a newer PdfViewer adds the feature (the spec's §16 Decision 1).
+moves to the control's own when a newer PdfViewer adds the feature (the spec's §16 Decision 1). Their buttons go in
+CoffeePDF's own toolbar (After v1.0).
 
 - Page operations: rotate, delete, reorder, insert, combine, split and extract.
 - Signatures and true redaction.
 - Legal tooling: Bates numbering, exhibit stamps, a doc # footer stamp, bundles from several Healdan documents.
 
 ## Backlog
+
+- **Restyle a selected markup from CoffeePDF's toolbar** once a PdfViewer allows it. The PdfViewer 12.0.1 ends a
+  selection at any press outside it, and its style properties don't restyle a selection, though its docs say they do;
+  its right-click menu does (the toolbar spec's §10, probes 8 and 8b, which show whether a newer PdfViewer fixes them).
+  Both are worth reporting to Avalonia.
 
 - **Remove the temporary patch to Avalonia's macOS library** once an Avalonia release fixes
   [AvaloniaUI/Avalonia#22285](https://github.com/AvaloniaUI/Avalonia/issues/22285), which is the cause of

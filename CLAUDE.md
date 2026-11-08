@@ -51,6 +51,10 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
 - **Tests wait for conditions,** never for fixed times.
 - **`TreatWarningsAsErrors` is on.**
 - **The PdfViewer's `AutoSave` stays off** (spec §6.4).
+- **The PdfViewer's own toolbar stays hidden** (`IsToolbarVisible`; the toolbar spec,
+  `docs/superpowers/specs/2026-11-05-coffeepdf-toolbar-design.md`). `Toolbar/DocumentToolbar` drives the viewer through
+  its public API only, and every button has an icon from `Toolbar/Icons.axaml` (written by `make-icons.sh`) or, for the
+  Colour button, a swatch, an accessible name and a tooltip.
 - **Every save goes through `DocumentWindow.SaveToAsync`:** the PdfViewer saves to memory, `MarkupAuthor` writes the
   author, `PdfCompaction` gives an unsigned PDF a full save (spec §6.4), and `AtomicFile` replaces the file. The
   PdfViewer's `AllowDocumentSaving` stays off (spec §16 Decision 1).
@@ -69,5 +73,6 @@ packaging/mac/make-icon.sh                                   # CoffeePDF.icns fr
   in `THIRD-PARTY-NOTICES.md`, with the notice copied from the package or its upstream repository, never retyped.
   `package.sh` puts the file in `Contents/Resources`. It stops without it, and `check-notices.py` stops it when the
   publish carries a package, a version or a native library the file doesn't give. A newer SDK can bring a newer .NET
-  runtime with no change here, so that's the usual one.
+  runtime with no change here, so that's the usual one. The toolbar's Fluent icons are in no `deps.json`, so
+  `test_check_notices.py` checks their section against `make-icons.sh`'s version.
 - **Pushes go through the owner.** Never push, tag or open a pull request without the owner's go-ahead.
