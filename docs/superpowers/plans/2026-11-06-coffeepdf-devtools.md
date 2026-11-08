@@ -1090,7 +1090,8 @@ COFFEEPDF_DEVTOOLS=1 packaging/mac/package.sh 0.0.1-test.1   # a test build with
   - Avalonia's Developer Tools in test builds, designed on 2026-11-06
     ([spec](superpowers/specs/2026-11-06-coffeepdf-devtools-design.md),
     [plan](superpowers/plans/2026-11-06-coffeepdf-devtools.md)) and built on YYYY-MM-DD. Claude runs a pass on each test
-    build before the owner's checks ([how](DEVTOOLS.md)), and the acceptance run on the toolbar's bug is next.
+    build before the owner's checks ([how](DEVTOOLS.md)). The acceptance run, on the PdfViewer limit the toolbar's
+    checks found, is next.
 ```
 
 - In the devtools spec's status line, replace its last sentence, the one naming the implementation plan, with this,
@@ -1116,14 +1117,20 @@ git commit -m "Document the developer tools in test builds, and Claude's pass be
 
 ### Task 6: The acceptance run (the spec's §7)
 
+The run tests the PdfViewer's limit the toolbar's checks found (the spec's §1): a press anywhere outside the viewer
+ends its selection, so on `1.1.0-toolbar.4` a click on a format button with a shape selected ended the selection and
+hid the menus. It isn't a bug in CoffeePDF, and the merged toolbar works around it for now: its format menus hide while
+a shape is selected, and the viewer's own right-click menu restyles it (owner, 2026-11-06).
+
 This task needs the owner:
 - Computer use turned on, and access to CoffeePDF approved.
 - `avdt` signed in.
 - The MCP server approved, in a session started after Task 4.
-- The commit `1.1.0-toolbar.4` was built from, from the owner or the toolbar's session.
-- For Step 6, the toolbar's fixed commit.
+- The commit `1.1.0-toolbar.4` was built from, from the owner or the toolbar's session. It's on the toolbar's branch,
+  `origin/claude/pdf-viewer-toolbar-buttons-adaeb4`.
 
-Ask for what's missing, then wait. Nothing from this task's merge is committed or pushed.
+Ask for what's missing, then wait. Nothing from this task's merge is committed or pushed. Each pass's PDFs go in a
+folder of their own under `$SCRATCH`, since `Writes_the_pass_pdfs` never writes over PDFs already there.
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-11-06-coffeepdf-devtools-design.md` (§10, and §6.5 if the outcome changes it)
@@ -1136,16 +1143,18 @@ Ask for what's missing, then wait. Nothing from this task's merge is committed o
 
 - [ ] **Step 1: Make the merge in a worktree of its own**
 
+This branch has since taken the merged toolbar from `main`, which would replace the toolbar under test. So merge only
+the developer tools' work, `f943031`, the branch's last commit before it took `main`:
+
 ```bash
 SCRATCH=…; git worktree add --detach "$SCRATCH/acceptance" <the commit 1.1.0-toolbar.4 came from>
-git -C "$SCRATCH/acceptance" merge --no-commit --no-ff claude/frosty-hypatia-55150e
+git -C "$SCRATCH/acceptance" merge --no-commit --no-ff f943031
 ```
 
 Resolve any conflicts:
 - **In docs** (`CLAUDE.md`, `docs/`, `README.md`) and in `test_check_notices.py`, keep the toolbar's side with
   `git -C "$SCRATCH/acceptance" checkout --ours -- <file>`. This merge is thrown away, so only the code matters.
-- **In code** (`CoffeePdf/`, `Directory.Packages.props`, `packaging/mac/package.sh`, `packaging/mac/check-notices.py`),
-  keep both sides' changes.
+- **In code** (`CoffeePdf/`, `Directory.Packages.props`, `packaging/mac/`), keep both sides' changes.
 
 - [ ] **Step 2: Package it with the developer tools (in the background)**
 
@@ -1153,20 +1162,22 @@ Resolve any conflicts:
 SCRATCH=…; cd "$SCRATCH/acceptance" && COFFEEPDF_DEVTOOLS=1 OUT_DIR="$SCRATCH/out-toolbar4" packaging/mac/package.sh 1.1.0-acceptance.1
 ```
 
-Expected: `Built …/CoffeePDF-1.1.0-acceptance.1-devtools.dmg`.
+Expected: `Built …/CoffeePDF-1.1.0-acceptance.1-devtools.dmg`, and `$SCRATCH/out-toolbar4/CoffeePDF-devtools.app`.
 
 - [ ] **Step 3: Launch it, and attach**
 
-Ask the owner to quit any other CoffeePDF. Then make the PDFs (Task 4, Step 3), and launch the build in the background:
+Ask the owner to quit any other CoffeePDF, and never quit one Claude didn't start. From this worktree, make the PDFs in
+a folder of their own, and launch the build in the background:
 
 ```bash
-SCRATCH=…; APP="$SCRATCH/out-toolbar4/CoffeePDF.app" packaging/mac/launch-test-build.sh "$SCRATCH" "$SCRATCH/pdfs/plain.pdf"
+SCRATCH=…; mkdir -p "$SCRATCH/toolbar4" && COFFEEPDF_PASS_DIR="$SCRATCH/toolbar4/pdfs" dotnet test CoffeePdf.Core.Tests --filter "FullyQualifiedName~PassFilesProbe.Writes_the_pass_pdfs"
+SCRATCH=…; APP="$SCRATCH/out-toolbar4/CoffeePDF-devtools.app" packaging/mac/launch-test-build.sh "$SCRATCH/toolbar4" "$SCRATCH/toolbar4/pdfs/plain.pdf"
 ```
 
-Then attach with `attach-to-app` and the pid. Load computer use's tools (ToolSearch, query `computer`), and
-`request_access` for CoffeePDF.
+Then attach with `attach-to-app` and the pid in `$SCRATCH/toolbar4/coffeepdf.pid`. Load computer use's tools
+(ToolSearch, query `computer`), and `request_access` for CoffeePDF.
 
-- [ ] **Step 4: Reproduce the bug by `avdt`'s click**
+- [ ] **Step 4: Reproduce the limit by `avdt`'s click**
 
 1. With computer use, arm the Rectangle tool (the Shapes button) and drag a rectangle on the page.
 2. Disarm the tool, and click the rectangle's edge, so the PdfViewer shows `:shape-selected`. Read it with `search` on
@@ -1174,25 +1185,45 @@ Then attach with `attach-to-app` and the pid. Load computer use's tools (ToolSea
 3. Find the Colour button with `search`, by its `x:Name` in `CoffeePdf/Toolbar/DocumentToolbar.axaml`, and send it
    `input Click`.
 4. Read the PdfViewer's pseudo-classes, the Colour button's `:flyout-open`, and the element with `:focus`.
-5. Record: was the selection ended, and were the menus hidden (the owner's finding)?
+5. Record: did the selection end, and did the menus hide (the owner's finding)?
 
 - [ ] **Step 5: Reproduce it by computer use's click**
 
 Select the rectangle again as in Step 4, then click Colour with computer use. Try the background tool (`app_click`)
 first, and note whether it reached CoffeePDF without bringing it to the front. Use the full-screen click only with the
-owner's go-ahead. Read and record the same states as in Step 4.
+owner's go-ahead. Read and record the same states as in Step 4. Then end the build:
+`APP="$SCRATCH/out-toolbar4/CoffeePDF-devtools.app" packaging/mac/launch-test-build.sh --quit "$SCRATCH/toolbar4"`.
 
-- [ ] **Step 6: Run both on the toolbar's fixed commit**
+- [ ] **Step 6: Check the interim on the toolbar as merged**
 
-Do Steps 1 to 5 again with the fixed commit, `1.1.0-acceptance.2` and `$SCRATCH/out-toolbar-fixed`. Expected: both
-clicks keep the selection and open the menu. If the fix hasn't landed yet, record that this step is pending, and come
-back to it once it has.
+This branch carries the toolbar as merged (coffeemuse/CoffeePDF#17), whose format menus hide while a shape is selected.
+Build it with the developer tools, in the background:
+
+```bash
+SCRATCH=…; COFFEEPDF_DEVTOOLS=1 OUT_DIR="$SCRATCH/out-merged" packaging/mac/package.sh 1.1.0-acceptance.2
+```
+
+Make the PDFs in `$SCRATCH/merged/pdfs` and launch `$SCRATCH/out-merged/CoffeePDF-devtools.app` with
+`$SCRATCH/merged`, as in Step 3, and attach. Then:
+
+1. Draw and select a rectangle, as in Step 4.
+2. With `search` and `props`, check that the format buttons (Colour, Line Width) aren't shown (`IsVisible` false, or
+   absent from the tree) while the PdfViewer shows `:shape-selected`.
+3. With computer use, right-click the rectangle, choose another fill colour in the viewer's own menu, and check by a
+   screenshot that the rectangle's fill changed.
+4. Save with ⌘S by computer use, end the build with `--quit`, and run `Reads_back_the_pass_pdfs` with
+   `COFFEEPDF_PASS_DIR="$SCRATCH/merged/pdfs"`: the square is there, by `Test Reviewer`.
+
+Record each.
 
 - [ ] **Step 7: Measure what the developer tools cost at launch**
 
-Start each of Task 3's two builds three times, with `launch-test-build.sh` and `plain.pdf`. Once computer use's
-screenshot shows the page drawn, read `ps -o rss=,time= -p <pid>` (memory, and CPU time to the first window), then kill
-the build. Record the averages for the build with the developer tools and the build without them.
+Package this branch once more without them, in the background:
+`SCRATCH=…; OUT_DIR="$SCRATCH/out-plain" packaging/mac/package.sh 1.1.0-acceptance.3`. Then start Step 6's app and
+`$SCRATCH/out-plain/CoffeePDF.app` three times each, with `launch-test-build.sh` and `plain.pdf`, each in a folder of
+its own. The script warns that the plain one carries no developer tools, as expected. Once computer use's screenshot shows
+the page drawn, read `ps -o rss=,time= -p <pid>` (memory, and CPU time to the first window), then end the build with
+`--quit`. Record the averages for the build with the developer tools and the build without them.
 
 - [ ] **Step 8: Record the findings, and set the pass by them**
 
@@ -1200,24 +1231,25 @@ Replace "None yet. The run in §7 records its findings here." in the spec's §10
 spec's style: date, build, what was done, what was seen. The findings are:
 - Step 4's result;
 - Step 5's result, background click included;
-- Step 6's result, or that it's pending;
+- Step 6's result;
 - Step 7's numbers.
 
 Then, by the spec's §7 outcome:
-- **If `avdt`'s click reproduced the bug,** `docs/DEVTOOLS.md`'s first table row stays as it is.
-- **If only computer use did,** change that row's "How" to "computer use, for the format buttons and anything that can
-  take focus from the viewer; `avdt`'s `input Click` for the rest". Then add to the spec's §6.5, and to the DEVTOOLS
-  Limits, a bullet giving the reason from §10.
+- **If `avdt`'s click reproduced the limit,** `docs/DEVTOOLS.md`'s first table row stays as it is.
+- **If only computer use did,** change that row's "How" to "computer use, for the toolbar's buttons while a markup is
+  selected, and anything that can end the viewer's selection or take its focus; `avdt`'s `input Click` for the rest".
+  Then add to the spec's §6.5, and to the DEVTOOLS Limits, a bullet giving the reason from §10.
 
-In the roadmap's bullet, change "and the acceptance run on the toolbar's bug is next." to "and the acceptance run on the
-toolbar's bug passed on YYYY-MM-DD (the spec's §10).", or say what's left.
+In the roadmap's bullet, change "The acceptance run, on the PdfViewer limit the toolbar's checks found, is next." to
+"The acceptance run, on the PdfViewer limit the toolbar's checks found, passed on YYYY-MM-DD (the spec's §10).", or say
+what's left.
 
 - [ ] **Step 9: Clean up, and commit**
 
 ```bash
 SCRATCH=…; git worktree remove --force "$SCRATCH/acceptance"
 git add docs/superpowers/specs/2026-11-06-coffeepdf-devtools-design.md docs/DEVTOOLS.md docs/ROADMAP.md
-git commit -m "Record the developer tools' acceptance run on the toolbar's bug" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "Record the developer tools' acceptance run on the PdfViewer's selection limit" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---

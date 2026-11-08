@@ -36,7 +36,8 @@
   - Avalonia's Developer Tools in test builds, designed on 2026-11-06
     ([spec](superpowers/specs/2026-11-06-coffeepdf-devtools-design.md),
     [plan](superpowers/plans/2026-11-06-coffeepdf-devtools.md)) and built on 2026-11-06. Claude runs a pass on each test
-    build before the owner's checks ([how](DEVTOOLS.md)), and the acceptance run on the toolbar's bug is next.
+    build before the owner's checks ([how](DEVTOOLS.md)). The acceptance run, on the PdfViewer limit the toolbar's
+    checks found, is next.
 
 ## v1: read and mark up
 

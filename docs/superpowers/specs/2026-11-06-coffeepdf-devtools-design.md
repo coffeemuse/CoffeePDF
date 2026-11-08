@@ -14,9 +14,12 @@ part of a section.
 ## 1. Why
 
 On 2026-11-06, during the owner's checks of the toolbar on the test build `1.1.0-toolbar.4`, the owner found that
-clicking a format button (Colour, Line Width) with a shape selected ends the selection and hides the menus. The
-headless tests missed it, because they opened the menus from code rather than by clicking. Claude had no way to look
-at the real app on the Mac, or drive it, before handing the build over, so the owner was the first to see it.
+clicking a format button (Colour, Line Width) with a shape selected ends the selection and hides the menus. It's a
+limit of the PdfViewer 12.0.1 rather than a bug in CoffeePDF: a press anywhere outside the viewer ends its selection
+(the toolbar spec's §10, probe 8). For now the format menus hide while a shape is selected, and the viewer's own
+right-click menu restyles it (owner, 2026-11-06). The headless tests missed the limit, because they opened the menus
+from code rather than by clicking. Claude had no way to look at the real app on the Mac, or drive it, before handing
+the build over, so the owner was the first to see it.
 
 The owner asked for Avalonia's Developer Tools (`avdt`) in test builds, so Claude can catch such problems before the
 owner's checks. (owner)
@@ -215,7 +218,7 @@ them (§5).
 
 - **Anything a test can assert stays a headless test,** written first (the v1 spec's §8).
 - **The tests click by position,** as the toolbar's `ToolbarTesting.Click` does (a move, a press, a release). They never
-  call a handler or open a menu from code instead of clicking, which is the gap that let the toolbar's bug through.
+  call a handler or open a menu from code instead of clicking, which is the gap that hid the PdfViewer's limit (§1).
 - **A bug the pass finds gets a headless test that fails before its fix,** when headless input can reproduce it. When it
   can't (a native popup, a window becoming active, the menu bar), the pull request says so, and the check stays in the
   pass for later hand-offs.
@@ -232,14 +235,16 @@ them (§5).
 
 ## 7. Proving it (call)
 
-Once the build and the package work, the toolbar's bug is the test of the whole design:
+Once the build and the package work, the PdfViewer's limit that the owner found (§1) is the test of the whole design:
 
-1. Claude builds a package with the developer tools from a local merge of this work into the toolbar's branch, at the
-   commit that `1.1.0-toolbar.4` was built from (the toolbar's session names it). The merge is never committed or
-   pushed.
+1. Claude builds a package with the developer tools from a local merge of this work, as it stood before it took the
+   toolbar from `main`, into the toolbar's branch at the commit that `1.1.0-toolbar.4` was built from. That build still
+   shows the format buttons with a shape selected. The merge is never committed or pushed.
 2. On that build, with a shape selected, Claude clicks Colour twice: once by `avdt`'s `Click`, and once by computer use.
    It records which of the two reproduces the owner's finding: the selection ends and the menus hide.
-3. Claude does the same on the toolbar's fixed commit, where both should pass.
+3. On a build of this work as it is, which carries the toolbar as merged (coffeemuse/CoffeePDF#17), Claude checks the
+   interim instead: with a shape selected the format buttons are hidden, and the viewer's right-click menu restyles the
+   shape. That menu is the viewer's own popup, so it takes computer use.
 4. The same run records:
    - whether computer use's background clicks reach CoffeePDF without bringing it to the front;
    - what the developer tools cost at launch, in the CPU time to the first window and in memory, beside a build
@@ -248,9 +253,9 @@ Once the build and the package work, the toolbar's bug is the test of the whole 
 
 The outcome sets the pass:
 
-- **If `avdt`'s `Click` reproduces the bug,** clicks on controls are made by `avdt`, which is quicker and exact.
-- **If only computer use does,** the pass makes its clicks on controls that can take focus from the viewer (the format
-  buttons, and anything like them) by computer use, and §6.5 says why.
+- **If `avdt`'s `Click` reproduces the limit,** clicks on controls are made by `avdt`, which is quicker and exact.
+- **If only computer use does,** the pass makes its clicks on controls that can end the viewer's selection or take its
+  focus (the toolbar's buttons, and anything like them) by computer use, and §6.5 says why.
 
 ## 8. Docs (call)
 
