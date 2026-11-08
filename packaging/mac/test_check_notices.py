@@ -2,14 +2,16 @@
 
     python3 -I packaging/mac/test_check_notices.py
 
-Most run the check on a made-up publish's deps.json and notices. The last reads the real THIRD-PARTY-NOTICES.md, so a
-pull request that breaks the file's shape fails here, not at a release's package step. CI runs them on Linux.
+Most run the check on a made-up publish's deps.json and notices. The last two read the real THIRD-PARTY-NOTICES.md, so
+a pull request that breaks the file's shape, or changes the version of Fluent's icons without their notice, fails here,
+not at a release's package step. CI runs them on Linux.
 """
 import contextlib
 import importlib.util
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 
@@ -248,6 +250,17 @@ class TheRealNotices(unittest.TestCase):
         for heading, body in found.items():
             self.assertEqual(check.version_given(body), rows[heading],
                              "\"%s\": its **Version:** line and its row give the same version" % heading)
+
+    def test_fluents_section_gives_the_version_make_icons_fetches(self):
+        # make-icons.sh copies the toolbar's icons from a version no deps.json lists, so check-notices.py can't see it.
+        root = os.path.join(_here, "..", "..")
+        with open(os.path.join(root, "THIRD-PARTY-NOTICES.md"), encoding="utf-8") as file:
+            _, found, _ = check.sections(file.read())
+        with open(os.path.join(root, "CoffeePdf", "Toolbar", "make-icons.sh"), encoding="utf-8") as file:
+            fetched = re.search(r"^version=(\S+)$", file.read(), re.MULTILINE)
+        self.assertIsNotNone(fetched, "make-icons.sh sets version=")
+        self.assertEqual(check.version_given(found["Fluent UI System Icons"]), fetched.group(1),
+                         "Fluent's section gives the version make-icons.sh fetches")
 
 
 if __name__ == "__main__":

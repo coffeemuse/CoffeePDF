@@ -8,4 +8,12 @@
     <!-- Without its theme the PdfViewer draws nothing. -->
     <StyleInclude Source="avares://Avalonia.Controls.PdfViewer/Themes/Default.axaml" />
   </Application.Styles>
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <!-- The toolbar's icons (toolbar spec §4), written by Toolbar/make-icons.sh. -->
+        <ResourceInclude Source="avares://CoffeePDF/Toolbar/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
 </Application>
