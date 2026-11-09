@@ -12,6 +12,9 @@
     <PackageVersion Include="bblanchon.PDFium.macOS" Version="157.0.8086" />
     <PackageVersion Include="bblanchon.PDFium.Linux" Version="157.0.8086" />
     <PackageVersion Include="AvaloniaUI.Licensing" Version="3.1.3" />
+    <!-- Avalonia's Developer Tools, the app's side, for test builds only (the devtools spec's §4). Its version is the avdt
+         tool's (dotnet tool list -g): Avalonia asks for both to be updated together, and avdt warns when they differ. -->
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
   </ItemGroup>
   <ItemGroup>
     <!-- Test-only packages, at the Helper's versions. Pkcs signs the signed-PDF fixture. -->

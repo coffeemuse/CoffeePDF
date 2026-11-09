@@ -16,10 +16,15 @@
 #   NOTARY_KEY      the App Store Connect API key's .p8 file, with NOTARY_KEY_ID and NOTARY_ISSUER: with all three and
 #                   a signing identity, the app and the disk image are notarised and stapled.
 #   OUT_DIR         where the app and the disk image go; packaging/mac/out by default.
+#   COFFEEPDF_DEVTOOLS  1 for a test build with Avalonia's Developer Tools (the devtools spec, docs/DEVTOOLS.md), which
+#                   avdt can then inspect and drive. It stops with SIGN_IDENTITY set, or for a version with no label
+#                   (1.2.3) or a release candidate's (1.2.3-rc1, in any case), and the app is CoffeePDF-devtools.app, in
+#                   CoffeePDF-<version>-devtools.dmg, so it never takes a plain build's place.
+#                   Unset, the build must not carry them, and the checks below stop one that does.
 #
 # The steps, as the Healdan Helper's: a self-contained, single-file .NET publish for osx-arm64 with no .pdb, since any
-# file in Contents/MacOS that isn't native code breaks the bundle's signature; check-notices.py's check that
-# THIRD-PARTY-NOTICES.md gives each component the publish carries, at its version; the bundle, with the icon make-icon.sh
+# file in Contents/MacOS that isn't native code breaks the bundle's signature; the check that only a build with COFFEEPDF_DEVTOOLS=1 carries the developer tools;
+# check-notices.py's check that THIRD-PARTY-NOTICES.md gives each component the publish carries, at its version; the bundle, with the icon make-icon.sh
 # made and the notices in Contents/Resources; signing inside-out (each native library, the binary, then the bundle),
 # with the hardened runtime and a timestamp when there's an identity; codesign's strict check; notarising and stapling;
 # the disk image, with a link to Applications, signed (and notarised) too. Any failure stops it.
@@ -38,8 +43,27 @@ for tool in dotnet codesign hdiutil plutil ditto lipo python3 file; do
   command -v "$tool" >/dev/null || die "$tool isn't installed"
 done
 
+# Avalonia's Developer Tools, for a test build only (the devtools spec's §5): avdt can then read and drive the app
+# through a pipe any process running as this user can reach, so a release never carries them.
+devtools=false
+case "${COFFEEPDF_DEVTOOLS:-}" in
+  "") ;;
+  1) devtools=true ;;
+  *) die "COFFEEPDF_DEVTOOLS is 1, for a test build with the developer tools, or unset, not '$COFFEEPDF_DEVTOOLS'" ;;
+esac
+if [ "$devtools" = true ]; then
+  [ -z "${SIGN_IDENTITY:-}" ] ||
+    die "COFFEEPDF_DEVTOOLS=1 asks for a test build, but SIGN_IDENTITY asks for a signed build, which is a release candidate and never carries the developer tools"
+  label=${version#"$numeric"}
+  [ -n "$label" ] ||
+    die "COFFEEPDF_DEVTOOLS=1 is for a test build, whose version has a label, such as 1.1.0-toolbar.5, but '$version' is a release's"
+  [[ "$label" != -[Rr][Cc]* ]] ||
+    die "COFFEEPDF_DEVTOOLS=1 is for a test build, but '$version' is a release candidate's, which never carries the developer tools"
+fi
+
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
+. "$here/devtools.sh"
 [ -f "$here/CoffeePDF.icns" ] || die "packaging/mac/CoffeePDF.icns is missing: make-icon.sh makes it"
 # The licences of what the app carries ask for their notices to go with it.
 notices="$repo/THIRD-PARTY-NOTICES.md"
@@ -47,8 +71,10 @@ notices="$repo/THIRD-PARTY-NOTICES.md"
 out=${OUT_DIR:-"$here/out"}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
-app="$out/CoffeePDF.app"
-dmg="$out/CoffeePDF-$version.dmg"
+suffix=
+[ "$devtools" = false ] || suffix=-devtools
+app="$out/CoffeePDF$suffix.app"
+dmg="$out/CoffeePDF-$version$suffix.dmg"
 work=$(mktemp -d "${TMPDIR:-/tmp}/coffeepdf-package.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 rm -rf "$app" "$dmg"
@@ -59,6 +85,8 @@ if [ -z "${AVALONIA_LICENSE_KEY:-}" ]; then
     die "SIGN_IDENTITY asks for a signed build, but AVALONIA_LICENSE_KEY is unset, so the app's PdfViewer would throw as soon as a window creates it (unset SIGN_IDENTITY for a build without the key)"
   warn "WITHOUT the Avalonia licence key: AVALONIA_LICENSE_KEY is unset, so the PdfViewer throws as soon as a window creates it, and the app shows no PDF"
 fi
+[ "$devtools" = false ] ||
+  warn "WITH the developer tools: any process running as you can read and drive this app. Never hand it beyond this Mac."
 
 # --- Who signs ------------------------------------------------------------------------------------------------------
 
@@ -106,13 +134,20 @@ dotnet publish "$repo/CoffeePdf/CoffeePdf.csproj" \
   --configuration Release --runtime osx-arm64 --self-contained true --output "$work/publish" \
   -p:CoffeePdfiumRid=osx-arm64 -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false \
   -p:Version="$numeric" -p:InformationalVersion="$version" -p:IncludeSourceRevisionInInformationalVersion=false \
-  -p:PublishDepsFilePath="$work/CoffeePDF.deps.json" -nologo
+  -p:PublishDepsFilePath="$work/CoffeePDF.deps.json" -p:CoffeePdfDevTools="$devtools" -nologo
 
 # Only native code may sit in Contents/MacOS: a managed .dll, a .pdb or a .json there breaks the bundle's signature.
 for file in "$work/publish"/*; do
   file -b "$file" | grep -q '^Mach-O' || die "the publish left $(basename "$file"), which isn't native code, beside the binary"
 done
 [ -f "$work/publish/CoffeePDF" ] || die "the publish made no CoffeePDF binary"
+# The bytes that ship carry the developer tools only in a build made with COFFEEPDF_DEVTOOLS=1 (devtools.sh).
+if carries_devtools "$work/publish/CoffeePDF"; then
+  [ "$devtools" = true ] ||
+    die "the binary carries the developer tools (AvaloniaUI.DiagnosticsSupport), which only a test build made with COFFEEPDF_DEVTOOLS=1 may carry"
+else
+  [ "$devtools" = false ] || die "COFFEEPDF_DEVTOOLS=1 asked for the developer tools, but the binary doesn't carry them"
+fi
 # CoffeePDF's own copy of PDFium (CoffeePdf.Core.csproj), beside the PdfViewer's libpdfium: the publish above names its
 # platform, and this stops a package that lost it or got the wrong one.
 [ -f "$work/publish/libcoffeepdfium.dylib" ] || die "the publish made no libcoffeepdfium.dylib, CoffeePDF's own copy of PDFium"
@@ -127,7 +162,9 @@ cmp -s "$work/publish/libAvaloniaNative.dylib" "$repo/packaging/avalonia-native/
 # THIRD-PARTY-NOTICES.md. A newer SDK brings a newer .NET runtime with no change in the repository, so that's the
 # usual stop: the runtime's section and row then take the new version, with the new runtime pack's notices.
 [ -f "$work/CoffeePDF.deps.json" ] || die "the publish wrote no CoffeePDF.deps.json, so the notices can't be checked"
-python3 -I "$here/check-notices.py" "$work/CoffeePDF.deps.json" "$notices" "$work/publish" ||
+notices_flags=()
+[ "$devtools" = false ] || notices_flags=(--devtools)
+python3 -I "$here/check-notices.py" ${notices_flags[@]+"${notices_flags[@]}"} "$work/CoffeePDF.deps.json" "$notices" "$work/publish" ||
   die "THIRD-PARTY-NOTICES.md doesn't cover what the publish carries (above)"
 
 say "Building $app"
@@ -220,7 +257,7 @@ fi
 
 say "Building $dmg"
 mkdir "$work/image"
-ditto "$app" "$work/image/CoffeePDF.app"
+ditto "$app" "$work/image/$(basename "$app")"
 ln -s /Applications "$work/image/Applications"
 made=false
 for attempt in 1 2 3; do # hdiutil is sometimes "busy" on CI's runners
@@ -243,6 +280,7 @@ fi
 say ""
 say "Built $dmg"
 say "  sha256 $(shasum -a 256 "$dmg" | cut -d' ' -f1)"
+[ "$devtools" = false ] || warn "WITH the developer tools: a test build for this Mac only"
 if [ -z "$identity" ]; then
   warn "NOT SIGNED with a Developer ID (ad-hoc only), and not notarised"
 elif [ "$notarise" = false ]; then
